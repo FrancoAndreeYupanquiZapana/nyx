@@ -24,5 +24,4 @@ class HandDetector:
             landmarks = hand.landmark
             self.mp_draw.draw_landmarks(frame, hand, self.mp_hands.HAND_CONNECTIONS)
 
-        # Devuelve SOLO 2 valores, no 4
         return frame, landmarks

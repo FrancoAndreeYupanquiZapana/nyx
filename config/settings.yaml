@@ -1,0 +1,59 @@
+app:
+  activation_word: Marcos
+  log_level: INFO
+  name: GestureControl
+  version: 1.0.0
+controllers:
+  bash:
+    allow_sudo: false
+    enabled: false
+    timeout: 30
+    working_dir: ''
+  keyboard:
+    combination_delay: 0.05
+    enabled: true
+    hold_time: 0.5
+    press_delay: 0.1
+  mouse:
+    enabled: true
+    scroll_sensitivity: 0.5
+    sensitivity: 1.0
+    smoothing: 5
+  window:
+    auto_maximize: false
+    delay: 0.5
+    enabled: true
+detectors:
+  arm:
+    enabled: false
+    max_range: 2.0
+    sensitivity: 0.6
+  hand:
+    enabled: true
+    max_hands: 2
+    sensitivity: 0.73
+    tracking: true
+  pose:
+    enabled: false
+    sensitivity: 0.5
+  voice:
+    confidence: 0.8
+    enabled: true
+gestures:
+  cooldown: 0.5
+  max_gestures: 10
+  min_confidence: 0.6
+ui:
+  always_on_top: false
+  auto_hide: false
+  camera_index: 0
+  font_size: 10
+  hide_timeout: 10
+  notification_duration: 3
+  show_fps: true
+  show_grid: false
+  show_landmarks: true
+  show_notifications: true
+  sound_enabled: false
+  start_minimized: false
+  theme: light

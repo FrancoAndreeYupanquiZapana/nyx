@@ -1,0 +1,98 @@
+{
+  "profile_name": "productivity",
+  "description": "Perfil para trabajo y productividad",
+  "version": "1.0.0",
+  "author": "Usuario",
+  "enabled_modules": ["hand_detection", "voice_recognition"],
+  
+  "gestures": {
+    "hand_gestures": {
+      "ok": {
+        "action": "keyboard",
+        "command": "enter",
+        "description": "Confirmar/Aceptar",
+        "enabled": true
+      },
+      "thumbs_up": {
+        "action": "keyboard",
+        "command": "ctrl+s",
+        "description": "Guardar documento",
+        "enabled": true
+      },
+      "peace": {
+        "action": "keyboard",
+        "command": "ctrl+z",
+        "description": "Deshacer",
+        "enabled": true
+      },
+      "rock": {
+        "action": "keyboard",
+        "command": "ctrl+y",
+        "description": "Rehacer",
+        "enabled": true
+      },
+      "point": {
+        "action": "mouse",
+        "command": "click",
+        "description": "Click izquierdo",
+        "enabled": true
+      }
+    },
+    
+    "arm_gestures": {
+      "arms_crossed": {
+        "action": "keyboard",
+        "command": "alt+f4",
+        "description": "Cerrar aplicación",
+        "enabled": true
+      },
+      "arms_up": {
+        "action": "bash",
+        "command": "amixer set Master 5%+",
+        "description": "Subir volumen un poco",
+        "enabled": true
+      }
+    }
+  },
+  
+  "voice_commands": {
+    "nyx abre chrome": {
+      "action": "bash",
+      "command": "google-chrome",
+      "description": "Abrir Chrome",
+      "enabled": true
+    },
+    "nyx abre terminal": {
+      "action": "bash",
+      "command": "gnome-terminal",
+      "description": "Abrir terminal",
+      "enabled": true
+    },
+    "nyx abre visual studio code": {
+      "action": "bash",
+      "command": "code",
+      "description": "Abrir VS Code",
+      "enabled": true
+    },
+    "nyx maximiza ventana": {
+      "action": "window",
+      "command": "maximize",
+      "description": "Maximizar ventana",
+      "enabled": true
+    },
+    "nyx minimiza ventana": {
+      "action": "window",
+      "command": "minimize",
+      "description": "Minimizar ventana",
+      "enabled": true
+    }
+  },
+  
+  "settings": {
+    "sensitivity": 5,
+    "response_time": 0.4,
+    "require_confirmation": true,
+    "sound_feedback": false,
+    "visual_feedback": true
+  }
+}

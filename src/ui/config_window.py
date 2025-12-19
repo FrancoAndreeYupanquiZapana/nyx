@@ -1,8 +1,7 @@
 """
-⚙️ CONFIG WINDOW - Ventana de configuración
-============================================
-Ventana de configuración avanzada del sistema NYX.
-Completamente integrada con la arquitectura del proyecto.
+⚙️ CONFIG WINDOW - Ventana de configuración mejorada
+====================================================
+Versión híbrida que combina lo mejor de ambas implementaciones.
 """
 
 import os
@@ -18,7 +17,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QListWidget, QListWidgetItem, QTreeWidget,
     QTreeWidgetItem, QSplitter, QScrollArea, QFrame,
     QMessageBox, QFileDialog, QInputDialog, QDialogButtonBox,
-    QStackedWidget, QRadioButton, QButtonGroup
+    QStackedWidget, QRadioButton, QButtonGroup, QGridLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt6.QtGui import QFont, QIcon, QAction, QColor, QPixmap
@@ -61,7 +60,7 @@ class ConfigTabWidget(QWidget):
 
 
 class DetectorsConfigTab(ConfigTabWidget):
-    """Pestaña de configuración de detectores."""
+    """Pestaña de configuración de detectores - MEJORADA."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,25 +78,36 @@ class DetectorsConfigTab(ConfigTabWidget):
         scroll_layout = QVBoxLayout(scroll_content)
         
         # ===== CÁMARA =====
-        camera_group = QGroupBox("Configuración de Cámara")
+        camera_group = QGroupBox("📷 Configuración de Cámara")
         camera_layout = QFormLayout()
         
         self.camera_device = QSpinBox()
         self.camera_device.setRange(0, 10)
         camera_layout.addRow("Dispositivo cámara:", self.camera_device)
         
+        # Añadido de la segunda versión: Resolución como combo
+        self.camera_resolution = QComboBox()
+        self.camera_resolution.addItems(["640x480", "800x600", "1024x768", "1280x720", "1920x1080"])
+        camera_layout.addRow("Resolución:", self.camera_resolution)
+        
+        # Mantener width/height para compatibilidad
+        res_layout = QHBoxLayout()
         self.camera_width = QSpinBox()
         self.camera_width.setRange(320, 3840)
         self.camera_width.setSingleStep(160)
-        camera_layout.addRow("Ancho (px):", self.camera_width)
+        res_layout.addWidget(QLabel("Ancho:"))
+        res_layout.addWidget(self.camera_width)
         
         self.camera_height = QSpinBox()
         self.camera_height.setRange(240, 2160)
         self.camera_height.setSingleStep(120)
-        camera_layout.addRow("Alto (px):", self.camera_height)
+        res_layout.addWidget(QLabel("Alto:"))
+        res_layout.addWidget(self.camera_height)
+        camera_layout.addRow("Dimensiones personalizadas:", res_layout)
         
         self.camera_fps = QSpinBox()
         self.camera_fps.setRange(1, 60)
+        self.camera_fps.setSuffix(" FPS")
         camera_layout.addRow("FPS:", self.camera_fps)
         
         self.camera_mirror = QCheckBox("Espejar imagen")
@@ -107,7 +117,7 @@ class DetectorsConfigTab(ConfigTabWidget):
         scroll_layout.addWidget(camera_group)
         
         # ===== DETECCIÓN DE MANOS =====
-        hand_group = QGroupBox("Detección de Manos (MediaPipe)")
+        hand_group = QGroupBox("🖐️ Detección de Manos (MediaPipe)")
         hand_layout = QFormLayout()
         
         self.hand_enabled = QCheckBox("Habilitar detección de manos")
@@ -137,7 +147,7 @@ class DetectorsConfigTab(ConfigTabWidget):
         scroll_layout.addWidget(hand_group)
         
         # ===== DETECCIÓN DE BRAZOS/POSTURA =====
-        pose_group = QGroupBox("Detección de Postura")
+        pose_group = QGroupBox("💪 Detección de Postura")
         pose_layout = QFormLayout()
         
         self.pose_enabled = QCheckBox("Habilitar detección de postura")
@@ -159,13 +169,14 @@ class DetectorsConfigTab(ConfigTabWidget):
         scroll_layout.addWidget(pose_group)
         
         # ===== RECONOCIMIENTO DE VOZ =====
-        voice_group = QGroupBox("Reconocimiento de Voz")
+        voice_group = QGroupBox("🎤 Reconocimiento de Voz")
         voice_layout = QFormLayout()
         
         self.voice_enabled = QCheckBox("Habilitar reconocimiento de voz")
         voice_layout.addRow(self.voice_enabled)
         
         self.voice_activation_word = QLineEdit()
+        self.voice_activation_word.setPlaceholderText("Ej: nyx")
         voice_layout.addRow("Palabra de activación:", self.voice_activation_word)
         
         self.voice_energy_threshold = QSpinBox()
@@ -193,13 +204,23 @@ class DetectorsConfigTab(ConfigTabWidget):
         
         # Conectar señales de cambio
         self._connect_signals()
+        
+        # Conectar cambio de resolución para actualizar width/height
+        self.camera_resolution.currentTextChanged.connect(self._on_resolution_changed)
+    
+    def _on_resolution_changed(self, resolution):
+        """Actualiza width/height cuando cambia la resolución."""
+        if 'x' in resolution:
+            w, h = resolution.split('x')
+            self.camera_width.setValue(int(w))
+            self.camera_height.setValue(int(h))
     
     def _connect_signals(self):
         """Conecta todas las señales de cambio."""
         widgets = [
-            self.camera_device, self.camera_width, self.camera_height,
-            self.camera_fps, self.camera_mirror, self.hand_enabled,
-            self.hand_max_hands, self.hand_detection_confidence,
+            self.camera_device, self.camera_resolution, self.camera_width,
+            self.camera_height, self.camera_fps, self.camera_mirror,
+            self.hand_enabled, self.hand_max_hands, self.hand_detection_confidence,
             self.hand_tracking_confidence, self.hand_model_complexity,
             self.pose_enabled, self.pose_detection_confidence,
             self.pose_tracking_confidence, self.voice_enabled,
@@ -227,6 +248,7 @@ class DetectorsConfigTab(ConfigTabWidget):
         return {
             'camera': {
                 'device_id': self.camera_device.value(),
+                'resolution': self.camera_resolution.currentText(),
                 'width': self.camera_width.value(),
                 'height': self.camera_height.value(),
                 'fps': self.camera_fps.value(),
@@ -262,6 +284,16 @@ class DetectorsConfigTab(ConfigTabWidget):
             # Cámara
             camera = system_config.get('camera', {})
             self.camera_device.setValue(camera.get('device_id', 0))
+            
+            # Nueva: resolución
+            if 'resolution' in camera:
+                self.camera_resolution.setCurrentText(camera['resolution'])
+            else:
+                # Calcular resolución más cercana
+                width = camera.get('width', 1280)
+                height = camera.get('height', 720)
+                self.camera_resolution.setCurrentText(f"{width}x{height}")
+            
             self.camera_width.setValue(camera.get('width', 1280))
             self.camera_height.setValue(camera.get('height', 720))
             self.camera_fps.setValue(camera.get('fps', 30))
@@ -304,16 +336,10 @@ class DetectorsConfigTab(ConfigTabWidget):
         except Exception as e:
             logger.error(f"Error guardando configuración de detectores: {e}")
             raise
-    
-    def apply_changes(self, changes: dict):
-        """Aplica cambios en tiempo real (para sistema en ejecución)."""
-        if 'detectors' in changes:
-            # Aquí se podrían aplicar cambios en tiempo real
-            logger.debug(f"Aplicando cambios de detectores: {changes['detectors'].keys()}")
 
 
 class ControllersConfigTab(ConfigTabWidget):
-    """Pestaña de configuración de controladores."""
+    """Pestaña de configuración de controladores - MEJORADA."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -330,23 +356,27 @@ class ControllersConfigTab(ConfigTabWidget):
         scroll_layout = QVBoxLayout(scroll_content)
         
         # ===== TECLADO =====
-        keyboard_group = QGroupBox("Controlador de Teclado")
+        keyboard_group = QGroupBox("⌨️ Controlador de Teclado")
         keyboard_layout = QFormLayout()
         
         self.keyboard_enabled = QCheckBox("Habilitar control de teclado")
         keyboard_layout.addRow(self.keyboard_enabled)
         
-        self.keyboard_delay = QDoubleSpinBox()
-        self.keyboard_delay.setRange(0.01, 2.0)
-        self.keyboard_delay.setSingleStep(0.05)
-        self.keyboard_delay.setSuffix(" segundos")
+        self.keyboard_delay = QSpinBox()
+        self.keyboard_delay.setRange(10, 1000)  # De 10ms a 1s
+        self.keyboard_delay.setSuffix(" ms")
         keyboard_layout.addRow("Retardo entre teclas:", self.keyboard_delay)
+        
+        # Añadido de la segunda versión: Repetición de teclas
+        self.keyboard_repeat = QCheckBox("Repetir teclas mantenidas")
+        self.keyboard_repeat.setChecked(True)
+        keyboard_layout.addRow(self.keyboard_repeat)
         
         keyboard_group.setLayout(keyboard_layout)
         scroll_layout.addWidget(keyboard_group)
         
         # ===== MOUSE =====
-        mouse_group = QGroupBox("Controlador de Mouse")
+        mouse_group = QGroupBox("🖱️ Controlador de Mouse")
         mouse_layout = QFormLayout()
         
         self.mouse_enabled = QCheckBox("Habilitar control de mouse")
@@ -357,6 +387,13 @@ class ControllersConfigTab(ConfigTabWidget):
         self.mouse_sensitivity.setSingleStep(0.1)
         mouse_layout.addRow("Sensibilidad:", self.mouse_sensitivity)
         
+        # Añadido de la segunda versión: Suavizado de mouse
+        self.mouse_smoothing = QSpinBox()
+        self.mouse_smoothing.setRange(0, 10)
+        self.mouse_smoothing.setSuffix(" frames")
+        self.mouse_smoothing.setToolTip("Número de frames para suavizar el movimiento")
+        mouse_layout.addRow("Suavizado:", self.mouse_smoothing)
+        
         self.mouse_acceleration = QCheckBox("Aceleración de mouse")
         mouse_layout.addRow(self.mouse_acceleration)
         
@@ -364,7 +401,7 @@ class ControllersConfigTab(ConfigTabWidget):
         scroll_layout.addWidget(mouse_group)
         
         # ===== ACCIONES RÁPIDAS =====
-        quick_group = QGroupBox("Acciones Rápidas (Bash)")
+        quick_group = QGroupBox("⚡ Acciones Rápidas (Bash)")
         quick_layout = QFormLayout()
         
         self.quick_screenshot = QLineEdit()
@@ -383,6 +420,15 @@ class ControllersConfigTab(ConfigTabWidget):
         self.quick_mute.setPlaceholderText("Comando para silenciar")
         quick_layout.addRow("Silenciar:", self.quick_mute)
         
+        # Añadir más acciones rápidas comunes
+        self.quick_brightness_up = QLineEdit()
+        self.quick_brightness_up.setPlaceholderText("Comando para subir brillo")
+        quick_layout.addRow("Brillo +:", self.quick_brightness_up)
+        
+        self.quick_brightness_down = QLineEdit()
+        self.quick_brightness_down.setPlaceholderText("Comando para bajar brillo")
+        quick_layout.addRow("Brillo -:", self.quick_brightness_down)
+        
         quick_group.setLayout(quick_layout)
         scroll_layout.addWidget(quick_group)
         
@@ -399,10 +445,11 @@ class ControllersConfigTab(ConfigTabWidget):
     def _connect_signals(self):
         """Conecta señales de cambio."""
         widgets = [
-            self.keyboard_enabled, self.keyboard_delay,
-            self.mouse_enabled, self.mouse_sensitivity, self.mouse_acceleration,
-            self.quick_screenshot, self.quick_volume_up,
-            self.quick_volume_down, self.quick_mute
+            self.keyboard_enabled, self.keyboard_delay, self.keyboard_repeat,
+            self.mouse_enabled, self.mouse_sensitivity, self.mouse_smoothing,
+            self.mouse_acceleration, self.quick_screenshot, self.quick_volume_up,
+            self.quick_volume_down, self.quick_mute, self.quick_brightness_up,
+            self.quick_brightness_down
         ]
         
         for widget in widgets:
@@ -423,18 +470,22 @@ class ControllersConfigTab(ConfigTabWidget):
         return {
             'keyboard': {
                 'enabled': self.keyboard_enabled.isChecked(),
-                'delay': self.keyboard_delay.value()
+                'delay': self.keyboard_delay.value(),
+                'repeat_enabled': self.keyboard_repeat.isChecked()
             },
             'mouse': {
                 'enabled': self.mouse_enabled.isChecked(),
                 'sensitivity': self.mouse_sensitivity.value(),
+                'smoothing': self.mouse_smoothing.value(),
                 'acceleration': self.mouse_acceleration.isChecked()
             },
             'quick_actions': {
                 'screenshot': self.quick_screenshot.text(),
                 'volume_up': self.quick_volume_up.text(),
                 'volume_down': self.quick_volume_down.text(),
-                'mute': self.quick_mute.text()
+                'mute': self.quick_mute.text(),
+                'brightness_up': self.quick_brightness_up.text(),
+                'brightness_down': self.quick_brightness_down.text()
             }
         }
     
@@ -453,13 +504,17 @@ class ControllersConfigTab(ConfigTabWidget):
             self.quick_volume_up.setText(quick_actions.get('volume_up', 'amixer set Master 5%+'))
             self.quick_volume_down.setText(quick_actions.get('volume_down', 'amixer set Master 5%-'))
             self.quick_mute.setText(quick_actions.get('mute', 'amixer set Master mute'))
+            self.quick_brightness_up.setText(quick_actions.get('brightness_up', 'brightnessctl set +5%'))
+            self.quick_brightness_down.setText(quick_actions.get('brightness_down', 'brightnessctl set 5%-'))
             
             # Configuración de la app
             self.keyboard_enabled.setChecked(settings.get('controllers.keyboard.enabled', True))
-            self.keyboard_delay.setValue(settings.get('controllers.keyboard.delay', 0.1))
+            self.keyboard_delay.setValue(settings.get('controllers.keyboard.delay', 50))
+            self.keyboard_repeat.setChecked(settings.get('controllers.keyboard.repeat_enabled', True))
             
             self.mouse_enabled.setChecked(settings.get('controllers.mouse.enabled', True))
             self.mouse_sensitivity.setValue(settings.get('controllers.mouse.sensitivity', 1.5))
+            self.mouse_smoothing.setValue(settings.get('controllers.mouse.smoothing', 3))
             self.mouse_acceleration.setChecked(settings.get('controllers.mouse.acceleration', False))
             
         except Exception as e:
@@ -476,7 +531,9 @@ class ControllersConfigTab(ConfigTabWidget):
                 'screenshot': self.quick_screenshot.text(),
                 'volume_up': self.quick_volume_up.text(),
                 'volume_down': self.quick_volume_down.text(),
-                'mute': self.quick_mute.text()
+                'mute': self.quick_mute.text(),
+                'brightness_up': self.quick_brightness_up.text(),
+                'brightness_down': self.quick_brightness_down.text()
             }
             
             self.config_loader.update_system_config(system_config)
@@ -487,11 +544,13 @@ class ControllersConfigTab(ConfigTabWidget):
                 'controllers': {
                     'keyboard': {
                         'enabled': self.keyboard_enabled.isChecked(),
-                        'delay': self.keyboard_delay.value()
+                        'delay': self.keyboard_delay.value(),
+                        'repeat_enabled': self.keyboard_repeat.isChecked()
                     },
                     'mouse': {
                         'enabled': self.mouse_enabled.isChecked(),
                         'sensitivity': self.mouse_sensitivity.value(),
+                        'smoothing': self.mouse_smoothing.value(),
                         'acceleration': self.mouse_acceleration.isChecked()
                     }
                 }
@@ -507,364 +566,8 @@ class ControllersConfigTab(ConfigTabWidget):
             raise
 
 
-class ProfilesConfigTab(ConfigTabWidget):
-    """Pestaña de configuración de perfiles."""
-    
-    profile_selected = pyqtSignal(str)
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.profile_manager = ProfileManager()
-        self._init_ui()
-        self.load_config()
-    
-    def _init_ui(self):
-        """Inicializa la interfaz."""
-        layout = QVBoxLayout()
-        
-        # Splitter para lista y editor
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Panel izquierdo: Lista de perfiles
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        
-        # Lista de perfiles
-        self.profile_list = QListWidget()
-        self.profile_list.currentItemChanged.connect(self._on_profile_selected)
-        left_layout.addWidget(QLabel("Perfiles disponibles:"))
-        left_layout.addWidget(self.profile_list)
-        
-        # Botones de gestión
-        btn_layout = QHBoxLayout()
-        
-        self.new_btn = QPushButton("Nuevo")
-        self.new_btn.clicked.connect(self._create_profile)
-        btn_layout.addWidget(self.new_btn)
-        
-        self.duplicate_btn = QPushButton("Duplicar")
-        self.duplicate_btn.clicked.connect(self._duplicate_profile)
-        btn_layout.addWidget(self.duplicate_btn)
-        
-        self.delete_btn = QPushButton("Eliminar")
-        self.delete_btn.clicked.connect(self._delete_profile)
-        btn_layout.addWidget(self.delete_btn)
-        
-        left_layout.addLayout(btn_layout)
-        
-        # Panel derecho: Editor de perfil
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        
-        # Información del perfil
-        info_group = QGroupBox("Información del Perfil")
-        info_layout = QFormLayout()
-        
-        self.profile_name = QLineEdit()
-        info_layout.addRow("Nombre:", self.profile_name)
-        
-        self.profile_description = QTextEdit()
-        self.profile_description.setMaximumHeight(80)
-        self.profile_description.setPlaceholderText("Descripción del perfil...")
-        info_layout.addRow("Descripción:", self.profile_description)
-        
-        self.profile_author = QLineEdit()
-        info_layout.addRow("Autor:", self.profile_author)
-        
-        info_group.setLayout(info_layout)
-        right_layout.addWidget(info_group)
-        
-        # Configuración del perfil
-        config_group = QGroupBox("Configuración")
-        config_layout = QFormLayout()
-        
-        self.profile_mouse_sensitivity = QDoubleSpinBox()
-        self.profile_mouse_sensitivity.setRange(0.1, 5.0)
-        self.profile_mouse_sensitivity.setSingleStep(0.1)
-        config_layout.addRow("Sensibilidad mouse:", self.profile_mouse_sensitivity)
-        
-        self.profile_keyboard_delay = QDoubleSpinBox()
-        self.profile_keyboard_delay.setRange(0.01, 1.0)
-        self.profile_keyboard_delay.setSingleStep(0.01)
-        self.profile_keyboard_delay.setSuffix(" segundos")
-        config_layout.addRow("Retardo teclado:", self.profile_keyboard_delay)
-        
-        self.profile_gesture_cooldown = QDoubleSpinBox()
-        self.profile_gesture_cooldown.setRange(0.0, 2.0)
-        self.profile_gesture_cooldown.setSingleStep(0.1)
-        self.profile_gesture_cooldown.setSuffix(" segundos")
-        config_layout.addRow("Enfriamiento gestos:", self.profile_gesture_cooldown)
-        
-        config_group.setLayout(config_layout)
-        right_layout.addWidget(config_group)
-        
-        # Módulos habilitados
-        modules_group = QGroupBox("Módulos Habilitados")
-        modules_layout = QVBoxLayout()
-        
-        self.module_hand = QCheckBox("Detección de manos")
-        self.module_hand.setChecked(True)
-        modules_layout.addWidget(self.module_hand)
-        
-        self.module_voice = QCheckBox("Reconocimiento de voz")
-        self.module_voice.setChecked(True)
-        modules_layout.addWidget(self.module_voice)
-        
-        self.module_keyboard = QCheckBox("Control de teclado")
-        self.module_keyboard.setChecked(True)
-        modules_layout.addWidget(self.module_keyboard)
-        
-        self.module_mouse = QCheckBox("Control de mouse")
-        self.module_mouse.setChecked(True)
-        modules_layout.addWidget(self.module_mouse)
-        
-        modules_group.setLayout(modules_layout)
-        right_layout.addWidget(modules_group)
-        
-        # Botón guardar
-        self.save_profile_btn = QPushButton("💾 Guardar Perfil")
-        self.save_profile_btn.clicked.connect(self._save_profile)
-        self.save_profile_btn.setEnabled(False)
-        right_layout.addWidget(self.save_profile_btn)
-        
-        right_layout.addStretch()
-        
-        # Configurar splitter
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setSizes([300, 500])
-        
-        layout.addWidget(splitter)
-        self.setLayout(layout)
-        
-        # Conectar señales de cambio
-        self._connect_signals()
-    
-    def _connect_signals(self):
-        """Conecta señales de cambio."""
-        widgets = [
-            self.profile_name, self.profile_description,
-            self.profile_author, self.profile_mouse_sensitivity,
-            self.profile_keyboard_delay, self.profile_gesture_cooldown,
-            self.module_hand, self.module_voice,
-            self.module_keyboard, self.module_mouse
-        ]
-        
-        for widget in widgets:
-            if hasattr(widget, 'textChanged'):
-                widget.textChanged.connect(self._on_profile_changed)
-            elif hasattr(widget, 'valueChanged'):
-                widget.valueChanged.connect(self._on_profile_changed)
-            elif hasattr(widget, 'stateChanged'):
-                widget.stateChanged.connect(self._on_profile_changed)
-    
-    def _on_profile_changed(self):
-        """Manejador cuando cambia el perfil."""
-        if self.profile_list.currentItem():
-            self.save_profile_btn.setEnabled(True)
-            self.changes = self.get_current_config()
-            self.config_changed.emit({'profiles': self.changes})
-    
-    def _on_profile_selected(self, current, previous):
-        """Manejador cuando se selecciona un perfil."""
-        if current:
-            profile_name = current.text()
-            self._load_profile_data(profile_name)
-            self.profile_selected.emit(profile_name)
-            self.save_profile_btn.setEnabled(False)
-    
-    def _load_profile_data(self, profile_name: str):
-        """Carga los datos de un perfil."""
-        try:
-            profile = self.profile_manager.load_profile(profile_name)
-            
-            self.profile_name.setText(profile.get('profile_name', ''))
-            self.profile_description.setText(profile.get('description', ''))
-            self.profile_author.setText(profile.get('author', 'Sistema'))
-            
-            settings = profile.get('settings', {})
-            self.profile_mouse_sensitivity.setValue(settings.get('mouse_sensitivity', 1.5))
-            self.profile_keyboard_delay.setValue(settings.get('keyboard_delay', 0.1))
-            self.profile_gesture_cooldown.setValue(settings.get('gesture_cooldown', 0.3))
-            
-            modules = profile.get('enabled_modules', [])
-            self.module_hand.setChecked('hand' in modules)
-            self.module_voice.setChecked('voice' in modules)
-            self.module_keyboard.setChecked('keyboard' in modules)
-            self.module_mouse.setChecked('mouse' in modules)
-            
-        except Exception as e:
-            logger.error(f"Error cargando perfil {profile_name}: {e}")
-    
-    def _create_profile(self):
-        """Crea un nuevo perfil."""
-        name, ok = QInputDialog.getText(
-            self, "Nuevo Perfil",
-            "Nombre del perfil:",
-            QLineEdit.EchoMode.Normal,
-            "nuevo_perfil"
-        )
-        
-        if ok and name:
-            # Crear perfil básico
-            profile = {
-                'profile_name': name,
-                'description': 'Perfil personalizado',
-                'version': '1.0.0',
-                'author': 'Usuario',
-                'gestures': {},
-                'voice_commands': {},
-                'settings': {
-                    'mouse_sensitivity': 1.5,
-                    'keyboard_delay': 0.1,
-                    'gesture_cooldown': 0.3
-                },
-                'enabled_modules': ['hand', 'voice', 'keyboard', 'mouse']
-            }
-            
-            # Guardar perfil
-            self.profile_manager.save_profile(name, profile)
-            
-            # Actualizar lista
-            self._refresh_profile_list()
-            
-            # Seleccionar nuevo perfil
-            items = self.profile_list.findItems(name, Qt.MatchFlag.MatchExactly)
-            if items:
-                self.profile_list.setCurrentItem(items[0])
-    
-    def _duplicate_profile(self):
-        """Duplica el perfil seleccionado."""
-        current = self.profile_list.currentItem()
-        if not current:
-            return
-        
-        original_name = current.text()
-        new_name, ok = QInputDialog.getText(
-            self, "Duplicar Perfil",
-            f"Nombre para la copia de '{original_name}':",
-            QLineEdit.EchoMode.Normal,
-            f"{original_name}_copia"
-        )
-        
-        if ok and new_name:
-            try:
-                profile = self.profile_manager.load_profile(original_name)
-                profile['profile_name'] = new_name
-                profile['description'] = f"Copia de {original_name}"
-                
-                self.profile_manager.save_profile(new_name, profile)
-                self._refresh_profile_list()
-                
-            except Exception as e:
-                logger.error(f"Error duplicando perfil: {e}")
-                QMessageBox.critical(self, "Error", f"No se pudo duplicar: {str(e)}")
-    
-    def _delete_profile(self):
-        """Elimina el perfil seleccionado."""
-        current = self.profile_list.currentItem()
-        if not current:
-            return
-        
-        profile_name = current.text()
-        
-        reply = QMessageBox.question(
-            self, "Confirmar eliminación",
-            f"¿Eliminar el perfil '{profile_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                self.profile_manager.delete_profile(profile_name)
-                self._refresh_profile_list()
-            except Exception as e:
-                logger.error(f"Error eliminando perfil: {e}")
-                QMessageBox.critical(self, "Error", f"No se pudo eliminar: {str(e)}")
-    
-    def _save_profile(self):
-        """Guarda el perfil actual."""
-        try:
-            profile_name = self.profile_name.text().strip()
-            if not profile_name:
-                QMessageBox.warning(self, "Error", "El nombre del perfil no puede estar vacío")
-                return
-            
-            # Crear perfil
-            profile = {
-                'profile_name': profile_name,
-                'description': self.profile_description.toPlainText(),
-                'version': '1.0.0',
-                'author': self.profile_author.text(),
-                'gestures': {},  # Se cargaría del perfil original
-                'voice_commands': {},  # Se cargaría del perfil original
-                'settings': {
-                    'mouse_sensitivity': self.profile_mouse_sensitivity.value(),
-                    'keyboard_delay': self.profile_keyboard_delay.value(),
-                    'gesture_cooldown': self.profile_gesture_cooldown.value()
-                },
-                'enabled_modules': []
-            }
-            
-            # Agregar módulos
-            if self.module_hand.isChecked():
-                profile['enabled_modules'].append('hand')
-            if self.module_voice.isChecked():
-                profile['enabled_modules'].append('voice')
-            if self.module_keyboard.isChecked():
-                profile['enabled_modules'].append('keyboard')
-            if self.module_mouse.isChecked():
-                profile['enabled_modules'].append('mouse')
-            
-            # Guardar perfil
-            self.profile_manager.save_profile(profile_name, profile)
-            
-            # Actualizar lista si cambió el nombre
-            current = self.profile_list.currentItem()
-            if current and current.text() != profile_name:
-                self._refresh_profile_list()
-            
-            self.save_profile_btn.setEnabled(False)
-            QMessageBox.information(self, "Éxito", f"Perfil '{profile_name}' guardado")
-            
-        except Exception as e:
-            logger.error(f"Error guardando perfil: {e}")
-            QMessageBox.critical(self, "Error", f"No se pudo guardar: {str(e)}")
-    
-    def _refresh_profile_list(self):
-        """Actualiza la lista de perfiles."""
-        self.profile_list.clear()
-        profiles = self.profile_manager.list_profiles()
-        for profile in profiles:
-            self.profile_list.addItem(profile)
-    
-    def get_current_config(self) -> dict:
-        """Obtiene la configuración actual."""
-        return {
-            'name': self.profile_name.text(),
-            'description': self.profile_description.toPlainText(),
-            'author': self.profile_author.text(),
-            'mouse_sensitivity': self.profile_mouse_sensitivity.value(),
-            'keyboard_delay': self.profile_keyboard_delay.value(),
-            'gesture_cooldown': self.profile_gesture_cooldown.value()
-        }
-    
-    def load_config(self):
-        """Carga la configuración."""
-        self._refresh_profile_list()
-        
-        # Seleccionar primer perfil si existe
-        if self.profile_list.count() > 0:
-            self.profile_list.setCurrentRow(0)
-    
-    def save_config(self):
-        """Guarda la configuración."""
-        # Los perfiles ya se guardan individualmente
-        pass
-
-
 class UISettingsTab(ConfigTabWidget):
-    """Pestaña de configuración de la interfaz."""
+    """Pestaña de configuración de la interfaz - MEJORADA."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -881,15 +584,15 @@ class UISettingsTab(ConfigTabWidget):
         scroll_layout = QVBoxLayout(scroll_content)
         
         # ===== APARIENCIA =====
-        appearance_group = QGroupBox("Apariencia")
+        appearance_group = QGroupBox("🎨 Apariencia")
         appearance_layout = QFormLayout()
         
         self.theme = QComboBox()
-        self.theme.addItems(["Oscuro", "Claro", "Automático"])
+        self.theme.addItems(["dark", "light", "blue", "green", "purple", "auto"])
         appearance_layout.addRow("Tema:", self.theme)
         
         self.language = QComboBox()
-        self.language.addItems(["Español", "English", "Français", "Deutsch"])
+        self.language.addItems(["es-ES", "en-US", "fr-FR", "de-DE", "it-IT"])
         appearance_layout.addRow("Idioma:", self.language)
         
         self.font_size = QSpinBox()
@@ -897,11 +600,18 @@ class UISettingsTab(ConfigTabWidget):
         self.font_size.setSuffix(" pt")
         appearance_layout.addRow("Tamaño de fuente:", self.font_size)
         
+        # Añadido de la segunda versión: Opacidad de ventana
+        self.window_opacity = QSpinBox()
+        self.window_opacity.setRange(10, 100)
+        self.window_opacity.setSuffix("%")
+        self.window_opacity.setToolTip("Opacidad de la ventana principal")
+        appearance_layout.addRow("Opacidad:", self.window_opacity)
+        
         appearance_group.setLayout(appearance_layout)
         scroll_layout.addWidget(appearance_group)
         
         # ===== VISUALIZACIÓN =====
-        display_group = QGroupBox("Visualización")
+        display_group = QGroupBox("📊 Visualización")
         display_layout = QFormLayout()
         
         self.show_fps = QCheckBox("Mostrar FPS")
@@ -920,7 +630,7 @@ class UISettingsTab(ConfigTabWidget):
         scroll_layout.addWidget(display_group)
         
         # ===== COMPORTAMIENTO =====
-        behavior_group = QGroupBox("Comportamiento")
+        behavior_group = QGroupBox("⚙️ Comportamiento")
         behavior_layout = QFormLayout()
         
         self.start_minimized = QCheckBox("Iniciar minimizado")
@@ -932,11 +642,15 @@ class UISettingsTab(ConfigTabWidget):
         self.minimize_to_tray = QCheckBox("Minimizar a bandeja")
         behavior_layout.addRow(self.minimize_to_tray)
         
+        # Añadido de la segunda versión: Ocultar al iniciar
+        self.hide_on_start = QCheckBox("Ocultar al iniciar")
+        behavior_layout.addRow(self.hide_on_start)
+        
         behavior_group.setLayout(behavior_layout)
         scroll_layout.addWidget(behavior_group)
         
         # ===== LOGS =====
-        logs_group = QGroupBox("Registros (Logs)")
+        logs_group = QGroupBox("📝 Registros (Logs)")
         logs_layout = QFormLayout()
         
         self.log_level = QComboBox()
@@ -945,6 +659,13 @@ class UISettingsTab(ConfigTabWidget):
         
         self.log_to_file = QCheckBox("Guardar logs en archivo")
         logs_layout.addRow(self.log_to_file)
+        
+        # Añadido de la segunda versión: Tamaño máximo de logs
+        self.log_max_size = QSpinBox()
+        self.log_max_size.setRange(1, 100)
+        self.log_max_size.setSuffix(" MB")
+        self.log_max_size.setToolTip("Tamaño máximo del archivo de log")
+        logs_layout.addRow("Tamaño máximo:", self.log_max_size)
         
         logs_group.setLayout(logs_layout)
         scroll_layout.addWidget(logs_group)
@@ -962,10 +683,11 @@ class UISettingsTab(ConfigTabWidget):
     def _connect_signals(self):
         """Conecta señales de cambio."""
         widgets = [
-            self.theme, self.language, self.font_size,
+            self.theme, self.language, self.font_size, self.window_opacity,
             self.show_fps, self.show_landmarks, self.show_gesture_info,
             self.camera_preview, self.start_minimized, self.always_on_top,
-            self.minimize_to_tray, self.log_level, self.log_to_file
+            self.minimize_to_tray, self.hide_on_start, self.log_level,
+            self.log_to_file, self.log_max_size
         ]
         
         for widget in widgets:
@@ -987,6 +709,7 @@ class UISettingsTab(ConfigTabWidget):
             'theme': self.theme.currentText(),
             'language': self.language.currentText(),
             'font_size': self.font_size.value(),
+            'window_opacity': self.window_opacity.value(),
             'show_fps': self.show_fps.isChecked(),
             'show_landmarks': self.show_landmarks.isChecked(),
             'show_gesture_info': self.show_gesture_info.isChecked(),
@@ -994,8 +717,10 @@ class UISettingsTab(ConfigTabWidget):
             'start_minimized': self.start_minimized.isChecked(),
             'always_on_top': self.always_on_top.isChecked(),
             'minimize_to_tray': self.minimize_to_tray.isChecked(),
+            'hide_on_start': self.hide_on_start.isChecked(),
             'log_level': self.log_level.currentText(),
-            'log_to_file': self.log_to_file.isChecked()
+            'log_to_file': self.log_to_file.isChecked(),
+            'log_max_size': self.log_max_size.value()
         }
     
     def load_config(self):
@@ -1006,14 +731,8 @@ class UISettingsTab(ConfigTabWidget):
             
             # Sistema
             general = system_config.get('general', {})
-            
-            theme_map = {'dark': 'Oscuro', 'light': 'Claro', 'auto': 'Automático'}
-            current_theme = general.get('theme', 'dark')
-            self.theme.setCurrentText(theme_map.get(current_theme, 'Oscuro'))
-            
-            lang_map = {'es-ES': 'Español', 'en-US': 'English', 'fr-FR': 'Français', 'de-DE': 'Deutsch'}
-            current_lang = general.get('language', 'es-ES')
-            self.language.setCurrentText(lang_map.get(current_lang, 'Español'))
+            self.theme.setCurrentText(general.get('theme', 'dark'))
+            self.language.setCurrentText(general.get('language', 'es-ES'))
             
             # UI settings
             ui_settings = system_config.get('ui', {})
@@ -1021,14 +740,17 @@ class UISettingsTab(ConfigTabWidget):
             self.show_landmarks.setChecked(ui_settings.get('show_landmarks', True))
             self.show_gesture_info.setChecked(ui_settings.get('show_gesture_info', True))
             self.camera_preview.setChecked(ui_settings.get('camera_preview', True))
+            self.window_opacity.setValue(int(ui_settings.get('opacity', 1.0) * 100))
             
             # App settings
             self.font_size.setValue(settings.get('ui.font_size', 10))
             self.start_minimized.setChecked(settings.get('ui.start_minimized', False))
             self.always_on_top.setChecked(settings.get('ui.always_on_top', False))
             self.minimize_to_tray.setChecked(settings.get('ui.minimize_to_tray', False))
+            self.hide_on_start.setChecked(settings.get('ui.hide_on_start', False))
             self.log_level.setCurrentText(settings.get('ui.log_level', 'INFO'))
             self.log_to_file.setChecked(settings.get('ui.log_to_file', True))
+            self.log_max_size.setValue(settings.get('ui.log_max_size', 10))
             
         except Exception as e:
             logger.error(f"Error cargando configuración de UI: {e}")
@@ -1040,18 +762,16 @@ class UISettingsTab(ConfigTabWidget):
             system_config = self.config_loader.get_system_config()
             
             # General
-            theme_map = {'Oscuro': 'dark', 'Claro': 'light', 'Automático': 'auto'}
-            lang_map = {'Español': 'es-ES', 'English': 'en-US', 'Français': 'fr-FR', 'Deutsch': 'de-DE'}
-            
-            system_config['general']['theme'] = theme_map.get(self.theme.currentText(), 'dark')
-            system_config['general']['language'] = lang_map.get(self.language.currentText(), 'es-ES')
+            system_config['general']['theme'] = self.theme.currentText()
+            system_config['general']['language'] = self.language.currentText()
             
             # UI
             system_config['ui'] = {
                 'show_fps': self.show_fps.isChecked(),
                 'show_landmarks': self.show_landmarks.isChecked(),
                 'show_gesture_info': self.show_gesture_info.isChecked(),
-                'camera_preview': self.camera_preview.isChecked()
+                'camera_preview': self.camera_preview.isChecked(),
+                'opacity': self.window_opacity.value() / 100.0
             }
             
             self.config_loader.update_system_config(system_config)
@@ -1064,8 +784,10 @@ class UISettingsTab(ConfigTabWidget):
                     'start_minimized': self.start_minimized.isChecked(),
                     'always_on_top': self.always_on_top.isChecked(),
                     'minimize_to_tray': self.minimize_to_tray.isChecked(),
+                    'hide_on_start': self.hide_on_start.isChecked(),
                     'log_level': self.log_level.currentText(),
-                    'log_to_file': self.log_to_file.isChecked()
+                    'log_to_file': self.log_to_file.isChecked(),
+                    'log_max_size': self.log_max_size.value()
                 }
             }
             
@@ -1079,12 +801,11 @@ class UISettingsTab(ConfigTabWidget):
             raise
 
 
-class GesturesConfigTab(ConfigTabWidget):
-    """Pestaña de configuración de gestos."""
+class PerformanceConfigTab(ConfigTabWidget):
+    """Pestaña de configuración de rendimiento - NUEVA (de la segunda versión)."""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.current_profile = None
         self._init_ui()
         self.load_config()
     
@@ -1092,355 +813,184 @@ class GesturesConfigTab(ConfigTabWidget):
         """Inicializa la interfaz."""
         layout = QVBoxLayout()
         
-        # Selección de perfil
-        profile_layout = QHBoxLayout()
-        profile_layout.addWidget(QLabel("Perfil:"))
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
         
-        self.profile_combo = QComboBox()
-        self.profile_combo.currentTextChanged.connect(self._on_profile_changed)
-        profile_layout.addWidget(self.profile_combo)
+        # ===== RENDIMIENTO =====
+        performance_group = QGroupBox("⚡ Rendimiento")
+        performance_layout = QFormLayout()
         
-        self.load_profile_btn = QPushButton("Cargar")
-        self.load_profile_btn.clicked.connect(self._load_selected_profile)
-        profile_layout.addWidget(self.load_profile_btn)
+        self.processing_threads = QSpinBox()
+        self.processing_threads.setRange(1, 8)
+        self.processing_threads.setToolTip("Número de hilos para procesamiento paralelo")
+        performance_layout.addRow("Hilos de procesamiento:", self.processing_threads)
         
-        profile_layout.addStretch()
-        layout.addLayout(profile_layout)
+        self.buffer_size = QSpinBox()
+        self.buffer_size.setRange(1, 10)
+        self.buffer_size.setSuffix(" frames")
+        self.buffer_size.setToolTip("Tamaño del buffer para procesamiento")
+        performance_layout.addRow("Tamaño de buffer:", self.buffer_size)
         
-        # Splitter para gestos y comandos de voz
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        self.latency_target = QSpinBox()
+        self.latency_target.setRange(10, 200)
+        self.latency_target.setSuffix(" ms")
+        self.latency_target.setToolTip("Latencia objetivo para procesamiento")
+        performance_layout.addRow("Latencia objetivo:", self.latency_target)
         
-        # ===== GESTOS =====
-        gestures_widget = QWidget()
-        gestures_layout = QVBoxLayout(gestures_widget)
+        performance_group.setLayout(performance_layout)
+        scroll_layout.addWidget(performance_group)
         
-        gestures_layout.addWidget(QLabel("Gestos configurados:"))
+        # ===== RED =====
+        network_group = QGroupBox("🌐 Red")
+        network_layout = QFormLayout()
         
-        self.gestures_table = QTableWidget()
-        self.gestures_table.setColumnCount(6)
-        self.gestures_table.setHorizontalHeaderLabels([
-            "Nombre", "Tipo", "Mano", "Confianza", "Acción", "Habilitado"
-        ])
-        self.gestures_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        gestures_layout.addWidget(self.gestures_table)
+        self.enable_network = QCheckBox("Habilitar funciones de red")
+        self.enable_network.setToolTip("Habilita funciones de red y servidor")
+        network_layout.addRow(self.enable_network)
         
-        # Botones para gestos
-        gesture_btn_layout = QHBoxLayout()
+        self.server_port = QSpinBox()
+        self.server_port.setRange(1024, 65535)
+        self.server_port.setValue(8080)
+        self.server_port.setToolTip("Puerto para el servidor interno")
+        network_layout.addRow("Puerto del servidor:", self.server_port)
         
-        self.add_gesture_btn = QPushButton("➕ Agregar Gesto")
-        self.add_gesture_btn.clicked.connect(self._add_gesture)
-        gesture_btn_layout.addWidget(self.add_gesture_btn)
+        network_group.setLayout(network_layout)
+        scroll_layout.addWidget(network_group)
         
-        self.edit_gesture_btn = QPushButton("✏️ Editar")
-        self.edit_gesture_btn.clicked.connect(self._edit_gesture)
-        gesture_btn_layout.addWidget(self.edit_gesture_btn)
+        # ===== AVANZADO =====
+        advanced_group = QGroupBox("🔧 Avanzado")
+        advanced_layout = QFormLayout()
         
-        self.remove_gesture_btn = QPushButton("🗑️ Eliminar")
-        self.remove_gesture_btn.clicked.connect(self._remove_gesture)
-        gesture_btn_layout.addWidget(self.remove_gesture_btn)
+        self.enable_hardware_acceleration = QCheckBox("Aceleración por hardware")
+        self.enable_hardware_acceleration.setToolTip("Usar GPU para procesamiento cuando esté disponible")
+        advanced_layout.addRow(self.enable_hardware_acceleration)
         
-        gestures_layout.addLayout(gesture_btn_layout)
-        splitter.addWidget(gestures_widget)
+        self.cache_size = QSpinBox()
+        self.cache_size.setRange(10, 1000)
+        self.cache_size.setSuffix(" MB")
+        self.cache_size.setToolTip("Tamaño de caché para datos de gestos")
+        advanced_layout.addRow("Tamaño de caché:", self.cache_size)
         
-        # ===== COMANDOS DE VOZ =====
-        voice_widget = QWidget()
-        voice_layout = QVBoxLayout(voice_widget)
+        self.enable_telemetry = QCheckBox("Enviar datos de uso anónimos")
+        self.enable_telemetry.setToolTip("Ayuda a mejorar NYX enviando datos de uso anónimos")
+        advanced_layout.addRow(self.enable_telemetry)
         
-        voice_layout.addWidget(QLabel("Comandos de voz:"))
+        advanced_group.setLayout(advanced_layout)
+        scroll_layout.addWidget(advanced_group)
         
-        self.voice_table = QTableWidget()
-        self.voice_table.setColumnCount(4)
-        self.voice_table.setHorizontalHeaderLabels([
-            "Comando", "Acción", "Descripción", "Habilitado"
-        ])
-        self.voice_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        voice_layout.addWidget(self.voice_table)
+        # Espaciador
+        scroll_layout.addStretch()
         
-        # Botones para comandos de voz
-        voice_btn_layout = QHBoxLayout()
-        
-        self.add_voice_btn = QPushButton("➕ Agregar Comando")
-        self.add_voice_btn.clicked.connect(self._add_voice_command)
-        voice_btn_layout.addWidget(self.add_voice_btn)
-        
-        self.edit_voice_btn = QPushButton("✏️ Editar")
-        self.edit_voice_btn.clicked.connect(self._edit_voice_command)
-        voice_btn_layout.addWidget(self.edit_voice_btn)
-        
-        self.remove_voice_btn = QPushButton("🗑️ Eliminar")
-        self.remove_voice_btn.clicked.connect(self._remove_voice_command)
-        voice_btn_layout.addWidget(self.remove_voice_btn)
-        
-        voice_layout.addLayout(voice_btn_layout)
-        splitter.addWidget(voice_widget)
-        
-        splitter.setSizes([400, 300])
-        layout.addWidget(splitter)
-        
-        # Botón guardar cambios
-        self.save_changes_btn = QPushButton("💾 Guardar Cambios en Perfil")
-        self.save_changes_btn.clicked.connect(self._save_profile_changes)
-        self.save_changes_btn.setEnabled(False)
-        layout.addWidget(self.save_changes_btn)
-        
+        scroll.setWidget(scroll_content)
+        layout.addWidget(scroll)
         self.setLayout(layout)
         
-        # Conectar selección de tabla
-        self.gestures_table.itemSelectionChanged.connect(self._on_gesture_selected)
-        self.voice_table.itemSelectionChanged.connect(self._on_voice_selected)
+        # Conectar señales
+        self._connect_signals()
     
-    def _on_profile_changed(self, profile_name: str):
-        """Manejador cuando cambia el perfil seleccionado."""
-        self.current_profile = profile_name
-        self.save_changes_btn.setEnabled(True)
-    
-    def _load_selected_profile(self):
-        """Carga el perfil seleccionado."""
-        profile_name = self.profile_combo.currentText()
-        if profile_name:
-            self._load_profile(profile_name)
-    
-    def _load_profile(self, profile_name: str):
-        """Carga un perfil específico."""
-        try:
-            profile_manager = ProfileManager()
-            profile = profile_manager.load_profile(profile_name)
-            self.current_profile = profile
-            
-            # Cargar gestos en tabla
-            self._load_gestures_to_table(profile.get('gestures', {}))
-            
-            # Cargar comandos de voz en tabla
-            self._load_voice_commands_to_table(profile.get('voice_commands', {}))
-            
-            logger.debug(f"Perfil {profile_name} cargado para edición")
-            
-        except Exception as e:
-            logger.error(f"Error cargando perfil {profile_name}: {e}")
-            QMessageBox.critical(self, "Error", f"No se pudo cargar el perfil: {str(e)}")
-    
-    def _load_gestures_to_table(self, gestures: dict):
-        """Carga gestos en la tabla."""
-        self.gestures_table.setRowCount(len(gestures))
+    def _connect_signals(self):
+        """Conecta señales de cambio."""
+        widgets = [
+            self.processing_threads, self.buffer_size, self.latency_target,
+            self.enable_network, self.server_port, self.enable_hardware_acceleration,
+            self.cache_size, self.enable_telemetry
+        ]
         
-        for i, (gesture_name, gesture_data) in enumerate(gestures.items()):
-            self.gestures_table.setItem(i, 0, QTableWidgetItem(gesture_name))
-            self.gestures_table.setItem(i, 1, QTableWidgetItem(gesture_data.get('type', 'hand')))
-            self.gestures_table.setItem(i, 2, QTableWidgetItem(gesture_data.get('hand', 'right')))
-            self.gestures_table.setItem(i, 3, QTableWidgetItem(str(gesture_data.get('confidence', 0.7))))
-            
-            action = f"{gesture_data.get('action', '')}:{gesture_data.get('command', '')}"
-            self.gestures_table.setItem(i, 4, QTableWidgetItem(action))
-            
-            enabled = "Sí" if gesture_data.get('enabled', True) else "No"
-            self.gestures_table.setItem(i, 5, QTableWidgetItem(enabled))
+        for widget in widgets:
+            if hasattr(widget, 'valueChanged'):
+                widget.valueChanged.connect(self._on_config_changed)
+            elif hasattr(widget, 'stateChanged'):
+                widget.stateChanged.connect(self._on_config_changed)
     
-    def _load_voice_commands_to_table(self, voice_commands: dict):
-        """Carga comandos de voz en la tabla."""
-        self.voice_table.setRowCount(len(voice_commands))
-        
-        for i, (command, command_data) in enumerate(voice_commands.items()):
-            self.voice_table.setItem(i, 0, QTableWidgetItem(command))
-            self.voice_table.setItem(i, 1, QTableWidgetItem(command_data.get('action', '')))
-            self.voice_table.setItem(i, 2, QTableWidgetItem(command_data.get('description', '')))
-            
-            enabled = "Sí" if command_data.get('enabled', True) else "No"
-            self.voice_table.setItem(i, 3, QTableWidgetItem(enabled))
+    def _on_config_changed(self):
+        """Manejador cuando hay cambios."""
+        self.changes = self.get_current_config()
+        self.config_changed.emit({'performance': self.changes})
     
-    def _add_gesture(self):
-        """Abre diálogo para agregar un nuevo gesto."""
-        from ui.gesture_editor import GestureEditorDialog
-        
-        dialog = GestureEditorDialog(self)
-        if dialog.exec():
-            new_gesture = dialog.get_gesture_data()
-            # Agregar a la tabla
-            row = self.gestures_table.rowCount()
-            self.gestures_table.insertRow(row)
-            
-            self.gestures_table.setItem(row, 0, QTableWidgetItem(new_gesture['name']))
-            self.gestures_table.setItem(row, 1, QTableWidgetItem(new_gesture['type']))
-            self.gestures_table.setItem(row, 2, QTableWidgetItem(new_gesture['hand']))
-            self.gestures_table.setItem(row, 3, QTableWidgetItem(str(new_gesture['confidence'])))
-            self.gestures_table.setItem(row, 4, QTableWidgetItem(new_gesture['action']))
-            self.gestures_table.setItem(row, 5, QTableWidgetItem("Sí" if new_gesture['enabled'] else "No"))
-            
-            self.save_changes_btn.setEnabled(True)
-    
-    def _edit_gesture(self):
-        """Edita el gesto seleccionado."""
-        selected = self.gestures_table.currentRow()
-        if selected >= 0:
-            # Obtener datos actuales
-            name = self.gestures_table.item(selected, 0).text()
-            
-            from ui.gesture_editor import GestureEditorDialog
-            
-            dialog = GestureEditorDialog(self)
-            # TODO: Cargar datos existentes en el diálogo
-            if dialog.exec():
-                updated_gesture = dialog.get_gesture_data()
-                # Actualizar tabla
-                self.gestures_table.setItem(selected, 0, QTableWidgetItem(updated_gesture['name']))
-                self.gestures_table.setItem(selected, 1, QTableWidgetItem(updated_gesture['type']))
-                self.gestures_table.setItem(selected, 2, QTableWidgetItem(updated_gesture['hand']))
-                self.gestures_table.setItem(selected, 3, QTableWidgetItem(str(updated_gesture['confidence'])))
-                self.gestures_table.setItem(selected, 4, QTableWidgetItem(updated_gesture['action']))
-                self.gestures_table.setItem(selected, 5, QTableWidgetItem("Sí" if updated_gesture['enabled'] else "No"))
-                
-                self.save_changes_btn.setEnabled(True)
-    
-    def _remove_gesture(self):
-        """Elimina el gesto seleccionado."""
-        selected = self.gestures_table.currentRow()
-        if selected >= 0:
-            name = self.gestures_table.item(selected, 0).text()
-            
-            reply = QMessageBox.question(
-                self, "Confirmar",
-                f"¿Eliminar el gesto '{name}'?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                self.gestures_table.removeRow(selected)
-                self.save_changes_btn.setEnabled(True)
-    
-    def _add_voice_command(self):
-        """Agrega un nuevo comando de voz."""
-        from ui.voice_command_editor import VoiceCommandEditorDialog
-        
-        dialog = VoiceCommandEditorDialog(self)
-        if dialog.exec():
-            new_command = dialog.get_command_data()
-            # Agregar a la tabla
-            row = self.voice_table.rowCount()
-            self.voice_table.insertRow(row)
-            
-            self.voice_table.setItem(row, 0, QTableWidgetItem(new_command['command']))
-            self.voice_table.setItem(row, 1, QTableWidgetItem(new_command['action']))
-            self.voice_table.setItem(row, 2, QTableWidgetItem(new_command['description']))
-            self.voice_table.setItem(row, 3, QTableWidgetItem("Sí" if new_command['enabled'] else "No"))
-            
-            self.save_changes_btn.setEnabled(True)
-    
-    def _edit_voice_command(self):
-        """Edita el comando de voz seleccionado."""
-        selected = self.voice_table.currentRow()
-        if selected >= 0:
-            from ui.voice_command_editor import VoiceCommandEditorDialog
-            
-            dialog = VoiceCommandEditorDialog(self)
-            if dialog.exec():
-                updated_command = dialog.get_command_data()
-                # Actualizar tabla
-                self.voice_table.setItem(selected, 0, QTableWidgetItem(updated_command['command']))
-                self.voice_table.setItem(selected, 1, QTableWidgetItem(updated_command['action']))
-                self.voice_table.setItem(selected, 2, QTableWidgetItem(updated_command['description']))
-                self.voice_table.setItem(selected, 3, QTableWidgetItem("Sí" if updated_command['enabled'] else "No"))
-                
-                self.save_changes_btn.setEnabled(True)
-    
-    def _remove_voice_command(self):
-        """Elimina el comando de voz seleccionado."""
-        selected = self.voice_table.currentRow()
-        if selected >= 0:
-            command = self.voice_table.item(selected, 0).text()
-            
-            reply = QMessageBox.question(
-                self, "Confirmar",
-                f"¿Eliminar el comando '{command}'?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                self.voice_table.removeRow(selected)
-                self.save_changes_btn.setEnabled(True)
-    
-    def _save_profile_changes(self):
-        """Guarda los cambios en el perfil."""
-        if not self.current_profile:
-            QMessageBox.warning(self, "Error", "No hay perfil seleccionado")
-            return
-        
-        try:
-            # Recolectar gestos de la tabla
-            gestures = {}
-            for row in range(self.gestures_table.rowCount()):
-                name = self.gestures_table.item(row, 0).text()
-                gestures[name] = {
-                    'type': self.gestures_table.item(row, 1).text(),
-                    'hand': self.gestures_table.item(row, 2).text(),
-                    'confidence': float(self.gestures_table.item(row, 3).text()),
-                    'action': self.gestures_table.item(row, 4).text().split(':')[0],
-                    'command': self.gestures_table.item(row, 4).text().split(':')[1] if ':' in self.gestures_table.item(row, 4).text() else '',
-                    'enabled': self.gestures_table.item(row, 5).text() == "Sí"
-                }
-            
-            # Recolectar comandos de voz
-            voice_commands = {}
-            for row in range(self.voice_table.rowCount()):
-                command = self.voice_table.item(row, 0).text()
-                voice_commands[command] = {
-                    'action': self.voice_table.item(row, 1).text(),
-                    'description': self.voice_table.item(row, 2).text(),
-                    'enabled': self.voice_table.item(row, 3).text() == "Sí"
-                }
-            
-            # Actualizar perfil
-            profile_manager = ProfileManager()
-            profile = profile_manager.load_profile(self.current_profile)
-            
-            profile['gestures'] = gestures
-            profile['voice_commands'] = voice_commands
-            
-            profile_manager.save_profile(self.current_profile, profile)
-            
-            self.save_changes_btn.setEnabled(False)
-            QMessageBox.information(self, "Éxito", f"Perfil '{self.current_profile}' actualizado")
-            
-        except Exception as e:
-            logger.error(f"Error guardando cambios en perfil: {e}")
-            QMessageBox.critical(self, "Error", f"No se pudieron guardar los cambios: {str(e)}")
-    
-    def _on_gesture_selected(self):
-        """Manejador cuando se selecciona un gesto."""
-        self.edit_gesture_btn.setEnabled(self.gestures_table.currentRow() >= 0)
-        self.remove_gesture_btn.setEnabled(self.gestures_table.currentRow() >= 0)
-    
-    def _on_voice_selected(self):
-        """Manejador cuando se selecciona un comando de voz."""
-        self.edit_voice_btn.setEnabled(self.voice_table.currentRow() >= 0)
-        self.remove_voice_btn.setEnabled(self.voice_table.currentRow() >= 0)
+    def get_current_config(self) -> dict:
+        """Obtiene la configuración actual."""
+        return {
+            'processing_threads': self.processing_threads.value(),
+            'buffer_size': self.buffer_size.value(),
+            'latency_target': self.latency_target.value(),
+            'enable_network': self.enable_network.isChecked(),
+            'server_port': self.server_port.value(),
+            'enable_hardware_acceleration': self.enable_hardware_acceleration.isChecked(),
+            'cache_size': self.cache_size.value(),
+            'enable_telemetry': self.enable_telemetry.isChecked()
+        }
     
     def load_config(self):
         """Carga la configuración."""
-        # Cargar lista de perfiles
-        profile_manager = ProfileManager()
-        profiles = profile_manager.list_profiles()
-        
-        self.profile_combo.clear()
-        for profile in profiles:
-            self.profile_combo.addItem(profile)
-        
-        # Cargar perfil activo si existe
-        active_profile = self.config_loader.get_setting('app.active_profile')
-        if active_profile and active_profile in profiles:
-            self.profile_combo.setCurrentText(active_profile)
-            self._load_profile(active_profile)
+        try:
+            system_config = self.config_loader.get_system_config()
+            settings = self.config_loader.get_settings()
+            
+            # Configuración de rendimiento
+            performance = system_config.get('performance', {})
+            self.processing_threads.setValue(performance.get('processing_threads', 2))
+            self.buffer_size.setValue(performance.get('buffer_size', 3))
+            self.latency_target.setValue(performance.get('latency_target', 100))
+            
+            # Configuración de red
+            network = system_config.get('network', {})
+            self.enable_network.setChecked(network.get('enabled', False))
+            self.server_port.setValue(network.get('server_port', 8080))
+            
+            # Configuración avanzada
+            advanced = settings.get('advanced', {})
+            self.enable_hardware_acceleration.setChecked(advanced.get('hardware_acceleration', True))
+            self.cache_size.setValue(advanced.get('cache_size', 100))
+            self.enable_telemetry.setChecked(advanced.get('telemetry', False))
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuración de rendimiento: {e}")
     
     def save_config(self):
         """Guarda la configuración."""
-        # Los cambios se guardan directamente en el perfil
-        pass
-    
-    def get_changes(self) -> dict:
-        """Obtiene los cambios realizados."""
-        return {'gestures_updated': True}
+        try:
+            # Actualizar system.yaml
+            system_config = self.config_loader.get_system_config()
+            
+            # Rendimiento
+            system_config['performance'] = {
+                'processing_threads': self.processing_threads.value(),
+                'buffer_size': self.buffer_size.value(),
+                'latency_target': self.latency_target.value()
+            }
+            
+            # Red
+            system_config['network'] = {
+                'enabled': self.enable_network.isChecked(),
+                'server_port': self.server_port.value()
+            }
+            
+            self.config_loader.update_system_config(system_config)
+            self.config_loader.save_system_config()
+            
+            # Actualizar settings.yaml
+            settings = {
+                'advanced': {
+                    'hardware_acceleration': self.enable_hardware_acceleration.isChecked(),
+                    'cache_size': self.cache_size.value(),
+                    'telemetry': self.enable_telemetry.isChecked()
+                }
+            }
+            
+            self.config_loader.update_settings(settings)
+            self.config_loader.save_settings()
+            
+            logger.info("Configuración de rendimiento guardada")
+            
+        except Exception as e:
+            logger.error(f"Error guardando configuración de rendimiento: {e}")
+            raise
 
 
 class ConfigWindow(QDialog):
-    """Ventana de configuración principal de NYX."""
+    """Ventana de configuración principal de NYX - MEJORADA."""
     
     config_applied = pyqtSignal(dict)  # Señal cuando se aplica configuración
     
@@ -1475,12 +1025,13 @@ class ConfigWindow(QDialog):
         # Tabs principales
         self.tab_widget = QTabWidget()
         
-        # Crear pestañas
+        # Crear pestañas (manteniendo ProfilesConfigTab y GesturesConfigTab originales)
         self.detectors_tab = DetectorsConfigTab()
         self.controllers_tab = ControllersConfigTab()
-        self.profiles_tab = ProfilesConfigTab()
-        self.gestures_tab = GesturesConfigTab()
+        self.profiles_tab = ProfilesConfigTab()  # Mantener original
+        self.gestures_tab = GesturesConfigTab()  # Mantener original
         self.ui_tab = UISettingsTab()
+        self.performance_tab = PerformanceConfigTab()  # Nueva pestaña
         
         # Agregar pestañas
         self.tab_widget.addTab(self.detectors_tab, "🎥 Detectores")
@@ -1488,6 +1039,7 @@ class ConfigWindow(QDialog):
         self.tab_widget.addTab(self.profiles_tab, "📁 Perfiles")
         self.tab_widget.addTab(self.gestures_tab, "👋 Gestos")
         self.tab_widget.addTab(self.ui_tab, "🎨 Interfaz")
+        self.tab_widget.addTab(self.performance_tab, "⚡ Rendimiento")
         
         layout.addWidget(self.tab_widget, 1)
         
@@ -1574,6 +1126,14 @@ class ConfigWindow(QDialog):
                 left: 10px;
                 padding: 0 5px 0 5px;
             }}
+            QPushButton {{
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
         """)
     
     def _connect_signals(self):
@@ -1583,7 +1143,8 @@ class ConfigWindow(QDialog):
             self.controllers_tab,
             self.profiles_tab,
             self.gestures_tab,
-            self.ui_tab
+            self.ui_tab,
+            self.performance_tab
         ]
         
         for tab in tabs:
@@ -1613,15 +1174,23 @@ class ConfigWindow(QDialog):
             self.gestures_tab._load_profile(profile_name)
     
     def _apply_changes(self):
-        """Aplica los cambios al sistema en tiempo real."""
+        """Aplica los cambios al sistema en tiempo real - MEJORADO."""
         try:
             if not self.all_changes:
                 return
             
             # Aplicar cambios a cada pestaña
             for tab in [self.detectors_tab, self.controllers_tab, 
-                       self.profiles_tab, self.gestures_tab, self.ui_tab]:
+                       self.profiles_tab, self.gestures_tab, 
+                       self.ui_tab, self.performance_tab]:
                 tab.apply_changes(self.all_changes)
+            
+            # Métodos específicos de aplicación (de la segunda versión)
+            if 'detectors' in self.all_changes and self.gesture_pipeline:
+                self.apply_detector_changes(self.all_changes['detectors'])
+            
+            if 'controllers' in self.all_changes and self.gesture_pipeline:
+                self.apply_controller_changes(self.all_changes['controllers'])
             
             # Emitir señal para que el sistema principal aplique cambios
             self.config_applied.emit(self.all_changes)
@@ -1636,6 +1205,69 @@ class ConfigWindow(QDialog):
             logger.error(f"Error aplicando cambios: {e}")
             self.status_bar.setText(f"❌ Error aplicando cambios: {str(e)}")
     
+    def apply_detector_changes(self, detector_changes):
+        """Aplica cambios en los detectores en tiempo real - DE LA SEGUNDA VERSIÓN."""
+        if not self.gesture_pipeline:
+            return
+        
+        try:
+            # Actualizar configuración de detectores
+            if hasattr(self.gesture_pipeline, 'gesture_integrator'):
+                integrator = self.gesture_pipeline.gesture_integrator
+                
+                # Manos
+                if 'hand_detection' in detector_changes:
+                    hand_config = detector_changes['hand_detection']
+                    if hasattr(integrator, 'detectors') and 'hand' in integrator.detectors:
+                        hand_detector = integrator.detectors['hand']
+                        if hasattr(hand_detector, 'update_config'):
+                            hand_detector.update_config(hand_config)
+                
+                # Cámara
+                if 'camera' in detector_changes:
+                    camera_config = detector_changes['camera']
+                    # Actualizar configuración de cámara si existe
+                    if hasattr(self.gesture_pipeline, 'camera'):
+                        camera = self.gesture_pipeline.camera
+                        if hasattr(camera, 'update_config'):
+                            camera.update_config(camera_config)
+            
+            logger.debug("Cambios de detectores aplicados en tiempo real")
+            
+        except Exception as e:
+            logger.error(f"Error aplicando cambios de detectores: {e}")
+    
+    def apply_controller_changes(self, controller_changes):
+        """Aplica cambios en los controladores en tiempo real - DE LA SEGUNDA VERSIÓN."""
+        if not self.gesture_pipeline:
+            return
+        
+        try:
+            # Actualizar configuración de controladores
+            if hasattr(self.gesture_pipeline, 'action_executor'):
+                executor = self.gesture_pipeline.action_executor
+                
+                # Mouse
+                if 'mouse' in controller_changes:
+                    mouse_config = controller_changes['mouse']
+                    if hasattr(executor, 'controllers') and 'mouse' in executor.controllers:
+                        mouse_controller = executor.controllers['mouse']
+                        if hasattr(mouse_controller, 'update_config'):
+                            mouse_controller.update_config(mouse_config)
+                
+                # Teclado
+                if 'keyboard' in controller_changes:
+                    keyboard_config = controller_changes['keyboard']
+                    if hasattr(executor, 'controllers') and 'keyboard' in executor.controllers:
+                        keyboard_controller = executor.controllers['keyboard']
+                        if hasattr(keyboard_controller, 'update_config'):
+                            keyboard_controller.update_config(keyboard_config)
+            
+            logger.debug("Cambios de controladores aplicados en tiempo real")
+            
+        except Exception as e:
+            logger.error(f"Error aplicando cambios de controladores: {e}")
+    
     def _save_all(self):
         """Guarda todos los cambios en disco."""
         try:
@@ -1645,6 +1277,7 @@ class ConfigWindow(QDialog):
             self.profiles_tab.save_config()
             self.gestures_tab.save_config()
             self.ui_tab.save_config()
+            self.performance_tab.save_config()
             
             # Resetear estado
             self.unsaved_changes = False
@@ -1680,6 +1313,7 @@ class ConfigWindow(QDialog):
             self.profiles_tab.load_config()
             self.gestures_tab.load_config()
             self.ui_tab.load_config()
+            self.performance_tab.load_config()
             
             # Resetear estado
             self.unsaved_changes = False
@@ -1691,19 +1325,24 @@ class ConfigWindow(QDialog):
             
             self.status_bar.setText("🔄 Cambios restaurados")
     
+    def cleanup(self):
+        """Limpia recursos antes de cerrar - DE LA SEGUNDA VERSIÓN."""
+        logger.info("Cerrando ventana de configuración")
+    
     def show_tab(self, tab_name: str):
         """
         Muestra una pestaña específica.
         
         Args:
-            tab_name: Nombre de la pestaña ('detectors', 'controllers', 'profiles', 'gestures', 'ui')
+            tab_name: Nombre de la pestaña ('detectors', 'controllers', 'profiles', 'gestures', 'ui', 'performance')
         """
         tab_map = {
             'detectors': 0,
             'controllers': 1,
             'profiles': 2,
             'gestures': 3,
-            'ui': 4
+            'ui': 4,
+            'performance': 5
         }
         
         if tab_name in tab_map:
@@ -1732,6 +1371,7 @@ class ConfigWindow(QDialog):
             else:
                 event.ignore()
         else:
+            self.cleanup()
             event.accept()
     
     def get_changes(self) -> dict:

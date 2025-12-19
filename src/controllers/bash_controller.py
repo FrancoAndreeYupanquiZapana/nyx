@@ -858,6 +858,7 @@ class BashController:
         self.kill_all_processes()
         logger.info("✅ BashController limpiado")
 
+"""
 
 # Ejemplo de uso
 if __name__ == "__main__":
@@ -879,11 +880,12 @@ if __name__ == "__main__":
         print(f"  {file['name']} ({'dir' if file['is_dir'] else 'file'})")
     
     print("\n=== Python code ===")
-    result = bash.execute_python("""
-import platform
-print(f"Sistema: {platform.system()}")
-print(f"Python: {platform.python_version()}")
-    """)
+    result = bash.execute_python("""    """)
+        
+    import platform
+    print(f"Sistema: {platform.system()}")
+    print(f"Python: {platform.python_version()}")
+    
     print(result['output'])
     
     # Mostrar estadísticas
@@ -895,3 +897,4 @@ print(f"Python: {platform.python_version()}")
     
     # Limpiar
     bash.cleanup()
+"""

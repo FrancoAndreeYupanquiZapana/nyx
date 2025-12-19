@@ -1,26 +1,27 @@
 """
-🏠 MAIN WINDOW - Ventana principal
-==================================
-Ventana principal del sistema de control por gestos.
-Solo consume datos del GesturePipeline (arquitectura moderna).
+🏠 MAIN WINDOW - Ventana principal NYX
+=======================================
+Ventana principal completamente integrada con ConfigWindow.
+Controla todo el sistema de control por gestos.
 """
 
 import sys
 import time
+import cv2
 from typing import Dict, Any, Optional
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QSplitter, QTabWidget, QLabel, QPushButton,
-    QGroupBox, QGridLayout, QStackedWidget, QFrame,
-    QStatusBar, QMenuBar, QMenu, QToolBar,
+    QSplitter, QLabel, QPushButton,
+    QGroupBox, QGridLayout, QFrame,
+    QStatusBar, QMenuBar, QMenu,
     QMessageBox, QApplication, QComboBox, QCheckBox,
-    QSlider, QSpinBox, QTextEdit, QListWidget, QListWidgetItem,
-    QLineEdit
+    QSlider, QTextEdit, QLineEdit, QSystemTrayIcon,
+    QFileDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon, QFont, QPixmap, QColor, QAction
+from PyQt6.QtGui import QIcon, QFont, QPixmap, QColor, QAction, QImage
 
 from ui.styles import styles, get_color, get_font
 from ui.config_window import ConfigWindow
@@ -29,8 +30,6 @@ from ui.profile_manager_window import ProfileManagerWindow
 from utils.logger import logger
 from utils.config_loader import config
 from core.gesture_pipeline import GesturePipeline
-from core.voice_recognizer import VoiceRecognizer
-from core.action_executor import ActionExecutor
 
 
 class CameraView(QFrame):
@@ -58,6 +57,7 @@ class CameraView(QFrame):
         # Estado de la cámara
         self.is_camera_active = False
         self.current_frame = None
+        self.current_gestures = {}
     
     def update_frame(self, frame, gestures: Dict[str, Any] = None):
         """
@@ -70,29 +70,64 @@ class CameraView(QFrame):
         if frame is None:
             return
         
+        # SOLO guardar datos
         self.current_frame = frame
-        
-        # Convertir frame a QPixmap
-        height, width, channel = frame.shape
-        bytes_per_line = 3 * width
-        from PyQt6.QtGui import QImage
-        q_image = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
-        pixmap = QPixmap.fromImage(q_image)
-        
-        # Escalar manteniendo aspecto
-        self.image_label.setPixmap(pixmap.scaled(
-            self.image_label.size(), 
-            Qt.AspectRatioMode.KeepAspectRatio, 
-            Qt.TransformationMode.SmoothTransformation
-        ))
+        self.current_gestures = gestures or {}
         
         # Actualizar información
         if gestures:
+            hand_count = gestures.get('hand_count', 0)
+            confidence = gestures.get('confidence', 0.0)
+            gesture_count = len(gestures.get('detected_gestures', []))
+            
             self.info_label.setText(
-                f"Gestos: {len(gestures)} | "
-                f"Manos: {gestures.get('hand_count', 0)} | "
-                f"Confianza: {gestures.get('confidence', 0):.2f}"
+                f"Gestos: {gesture_count} | "
+                f"Manos: {hand_count} | "
+                f"Confianza: {confidence:.1%}"
             )
+            self.info_label.setStyleSheet(f"color: {get_color('success')};")
+    
+    def render_frame(self, frame):
+        """Renderiza un frame en el widget de cámara."""
+        if frame is None or not self.isVisible():
+            return
+        
+        try:
+            # Verificar que la imagen sea válida
+            if frame.size == 0:
+                return
+            
+            h, w, ch = frame.shape
+            if w == 0 or h == 0:
+                return
+            
+            # Convertir BGR a RGB
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            bytes_per_line = ch * w
+            
+            # Crear QImage
+            qimg = QImage(
+                rgb.data,
+                w,
+                h,
+                bytes_per_line,
+                QImage.Format.Format_RGB888
+            )
+            
+            # Crear QPixmap
+            pixmap = QPixmap.fromImage(qimg)
+            
+            # Escalar manteniendo aspecto
+            if not pixmap.isNull():
+                scaled_pixmap = pixmap.scaled(
+                    self.image_label.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.image_label.setPixmap(scaled_pixmap)
+                
+        except Exception as e:
+            logger.debug(f"Error renderizando frame: {e}")
     
     def set_camera_status(self, active: bool, camera_id: int = 0):
         """Actualiza el estado de la cámara."""
@@ -104,6 +139,23 @@ class CameraView(QFrame):
         else:
             self.info_label.setText("Cámara inactiva")
             self.info_label.setStyleSheet(f"color: {get_color('error')};")
+
+    def clear_view(self):
+        """Limpia la vista de cámara de forma segura."""
+        try:
+            # Limpiar datos
+            self.current_frame = None
+            self.current_gestures = {}
+            
+            # Limpiar UI de forma segura
+            if self.image_label:
+                self.image_label.clear()
+            
+            self.info_label.setText("Cámara detenida")
+            self.info_label.setStyleSheet(f"color: {get_color('text_secondary')};")
+            
+        except Exception as e:
+            logger.debug(f"Error limpiando vista de cámara: {e}")
 
 
 class GestureStatusWidget(QGroupBox):
@@ -281,6 +333,8 @@ class ProfileSelector(QGroupBox):
         last_profile = config.get_setting('app.last_profile')
         if last_profile and last_profile in profiles:
             self.profile_combo.setCurrentText(last_profile)
+        elif profiles:
+            self.profile_combo.setCurrentIndex(0)
     
     def _on_profile_changed(self, profile_name: str):
         """Manejador cuando cambia el perfil."""
@@ -292,6 +346,8 @@ class ProfileSelector(QGroupBox):
             if profile_data:
                 desc = profile_data.get('description', 'Sin descripción')
                 self.description_label.setText(desc)
+            else:
+                self.description_label.setText("Perfil sin descripción")
             
             # Guardar como último perfil usado
             config.update_setting('app.last_profile', profile_name)
@@ -330,6 +386,10 @@ class ControlPanel(QGroupBox):
                 padding: 15px;
                 font-size: 14pt;
                 font-weight: bold;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                opacity: 0.9;
             }
         """)
         layout.addWidget(self.toggle_button)
@@ -378,7 +438,13 @@ class ControlPanel(QGroupBox):
         layout.addLayout(config_layout)
         
         # Botón de configuración avanzada
-        self.advanced_button = QPushButton("Configuración Avanzada...")
+        self.advanced_button = QPushButton("⚙️ Configuración Avanzada...")
+        self.advanced_button.setStyleSheet("""
+            QPushButton {
+                padding: 8px;
+                margin-top: 10px;
+            }
+        """)
         layout.addWidget(self.advanced_button)
         
         # Conectar señales
@@ -390,33 +456,35 @@ class ControlPanel(QGroupBox):
         """Actualiza el estado del sistema."""
         if running:
             self.toggle_button.setText("⏸ Detener Sistema")
-            self.toggle_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #F44336;
+            self.toggle_button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {get_color('error')};
                     color: white;
                     padding: 15px;
                     font-size: 14pt;
                     font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #D32F2F;
-                }
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    background-color: {get_color('error_dark')};
+                }}
             """)
             self.status_label.setText("Sistema activo")
-            self.status_label.setStyleSheet(f"color: {get_color('success')};")
+            self.status_label.setStyleSheet(f"color: {get_color('success')}; font-weight: bold;")
         else:
             self.toggle_button.setText("▶ Iniciar Sistema")
-            self.toggle_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #4CAF50;
+            self.toggle_button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {get_color('success')};
                     color: white;
                     padding: 15px;
                     font-size: 14pt;
                     font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #388E3C;
-                }
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    background-color: {get_color('success_dark')};
+                }}
             """)
             self.status_label.setText("Sistema detenido")
             self.status_label.setStyleSheet(f"color: {get_color('text_secondary')};")
@@ -450,52 +518,55 @@ class ControlPanel(QGroupBox):
 
 
 class MainWindow(QMainWindow):
-    """Ventana principal de la aplicación."""
-    gesture_detected = pyqtSignal(dict)
-    action_executed = pyqtSignal(dict, bool)  # (action_data, success)
-
+    """Ventana principal de la aplicación NYX."""
+    
+    # Señales principales
+    system_started = pyqtSignal()
+    system_stopped = pyqtSignal()
+    profile_changed = pyqtSignal(str)
+    
     def __init__(self):
         super().__init__()
         
         # Configuración inicial
-        self.setWindowTitle("Gesture Control System")
+        self.setWindowTitle("NYX - Control por Gestos")
         self.setGeometry(100, 100, 1400, 900)
         
         # Componentes principales
         self.gesture_pipeline = None
         
+        # Ventanas secundarias
         self.config_window = None
         self.profile_manager = ProfileManager()
         self.profile_window = None
         
-        # Estado
+        # Estado del sistema
         self.is_system_running = False
         self.current_profile = None
         self.last_frame_time = time.time()
+        self.fps_counter = 0
         
-        # Timer para actualizaciones
+        # Timers
         self.ui_update_timer = QTimer()
         self.ui_update_timer.timeout.connect(self._update_ui)
 
-        # Timer para actualizar estado del pipeline
         self.pipeline_check_timer = QTimer()
         self.pipeline_check_timer.timeout.connect(self._check_pipeline_status)
+        
+        # Frame buffer para la cámara
+        self.frame_buffer = None
+        self.gesture_buffer = None
         
         # Inicializar UI
         self._init_ui()
         self._setup_menu()
         self._connect_signals()
+        self._setup_tray_icon()
         
         # Cargar configuración
         self._load_config()
         
-        logger.info("Ventana principal inicializada")
-
-        # Conectar señales
-        self.gesture_detected.connect(self._on_gesture_detected)
-        self.action_executed.connect(self._on_action_executed)
-
-        logger.info(" -> Ventana principal inicializada")
+        logger.info("✅ Ventana principal de NYX inicializada")
     
     def _init_ui(self):
         """Inicializa la interfaz de usuario."""
@@ -533,16 +604,21 @@ class MainWindow(QMainWindow):
         self.control_panel = ControlPanel()
         right_layout.addWidget(self.control_panel)
         
-        # Consola de logs (expandible)
+        # Consola de logs
         self.log_console = QTextEdit()
         self.log_console.setReadOnly(True)
-        self.log_console.setMaximumHeight(150)
-        self.log_console.setPlaceholderText("Logs del sistema...")
+        self.log_console.setMaximumHeight(200)
+        self.log_console.setPlaceholderText("Registros del sistema NYX...")
         self.log_console.setStyleSheet(f"""
-            background-color: {get_color('surface_dark')};
-            color: {get_color('text_primary')};
-            font-family: 'Monospace';
-            font-size: 11px;
+            QTextEdit {{
+                background-color: {get_color('surface_dark')};
+                color: {get_color('text_primary')};
+                font-family: 'Monospace', 'Consolas', 'Courier New';
+                font-size: 11px;
+                border: 1px solid {get_color('border')};
+                border-radius: 4px;
+                padding: 5px;
+            }}
         """)
         right_layout.addWidget(self.log_console)
         
@@ -559,93 +635,207 @@ class MainWindow(QMainWindow):
         
         # Elementos de la barra de estado
         self.fps_label = QLabel("FPS: 0")
-        self.camera_label = QLabel("Cámara: Desconectada")
+        self.camera_label = QLabel("Cámara: ❌")
         self.profile_label = QLabel("Perfil: Ninguno")
-        self.pipeline_status_label = QLabel("Pipeline: X")
+        self.pipeline_status_label = QLabel("Pipeline: ❌")
+        self.memory_label = QLabel("Mem: --")
         
+        self.status_bar.addPermanentWidget(self.memory_label)
         self.status_bar.addPermanentWidget(self.pipeline_status_label)
         self.status_bar.addPermanentWidget(self.fps_label)
         self.status_bar.addPermanentWidget(self.camera_label)
         self.status_bar.addPermanentWidget(self.profile_label)
         
         # Mostrar mensaje inicial
-        self.status_bar.showMessage("Sistema listo. Selecciona un perfil e inicia el sistema.", 5000)
+        self.status_bar.showMessage("NYX listo. Selecciona un perfil y haz clic en 'Iniciar Sistema'.", 5000)
+        
+        # Aplicar estilos
+        self._apply_styles()
+    
+    def _apply_styles(self):
+        """Aplica estilos generales a la ventana."""
+        self.setStyleSheet(f"""
+            QMainWindow {{
+                background-color: {get_color('background')};
+            }}
+            QGroupBox {{
+                font-weight: bold;
+                border: 1px solid {get_color('border')};
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                color: {get_color('primary')};
+            }}
+            QLabel {{
+                color: {get_color('text_primary')};
+            }}
+            QPushButton {{
+                background-color: {get_color('surface')};
+                color: {get_color('text_primary')};
+                border: 1px solid {get_color('border')};
+                border-radius: 4px;
+                padding: 8px 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {get_color('surface_hover')};
+            }}
+            QPushButton:pressed {{
+                background-color: {get_color('surface_active')};
+            }}
+        """)
     
     def _setup_menu(self):
         """Configura la barra de menú."""
         menubar = self.menuBar()
         
         # Menú Archivo
-        file_menu = menubar.addMenu("Archivo")
+        file_menu = menubar.addMenu("📁 Archivo")
         
-        new_profile_action = QAction("Nuevo Perfil...", self)
+        new_profile_action = QAction("📄 Nuevo Perfil...", self)
         new_profile_action.triggered.connect(self._new_profile)
+        new_profile_action.setShortcut("Ctrl+N")
         file_menu.addAction(new_profile_action)
         
-        load_profile_action = QAction("Cargar Perfil...", self)
+        load_profile_action = QAction("📂 Cargar Perfil...", self)
         load_profile_action.triggered.connect(self._load_profile)
+        load_profile_action.setShortcut("Ctrl+O")
         file_menu.addAction(load_profile_action)
         
         file_menu.addSeparator()
         
-        save_config_action = QAction("Guardar Configuración", self)
+        import_action = QAction("⬆️ Importar Configuración...", self)
+        import_action.triggered.connect(self._import_config)
+        file_menu.addAction(import_action)
+        
+        export_action = QAction("⬇️ Exportar Configuración...", self)
+        export_action.triggered.connect(self._export_config)
+        file_menu.addAction(export_action)
+        
+        file_menu.addSeparator()
+        
+        save_config_action = QAction("💾 Guardar Configuración", self)
         save_config_action.triggered.connect(self._save_config)
+        save_config_action.setShortcut("Ctrl+S")
         file_menu.addAction(save_config_action)
         
         file_menu.addSeparator()
         
-        exit_action = QAction("Salir", self)
+        exit_action = QAction("🚪 Salir", self)
         exit_action.triggered.connect(self.close)
+        exit_action.setShortcut("Ctrl+Q")
         file_menu.addAction(exit_action)
         
         # Menú Configuración
-        config_menu = menubar.addMenu("Configuración")
+        config_menu = menubar.addMenu("⚙️ Configuración")
         
-        detectors_action = QAction("Detectores...", self)
-        detectors_action.triggered.connect(self._open_detectors_config)
-        config_menu.addAction(detectors_action)
-        
-        controllers_action = QAction("Controladores...", self)
-        controllers_action.triggered.connect(self._open_controllers_config)
-        config_menu.addAction(controllers_action)
-        
-        gestures_action = QAction("Gestos...", self)
-        gestures_action.triggered.connect(self._open_gestures_config)
-        config_menu.addAction(gestures_action)
+        system_config_action = QAction("🎛️ Configuración del Sistema...", self)
+        system_config_action.triggered.connect(self._open_config_window)
+        system_config_action.setShortcut("Ctrl+Shift+S")
+        config_menu.addAction(system_config_action)
         
         config_menu.addSeparator()
         
-        themes_action = QAction("Temas...", self)
-        themes_action.triggered.connect(self._open_themes_config)
-        config_menu.addAction(themes_action)
+        detectors_action = QAction("🎯 Detectores...", self)
+        detectors_action.triggered.connect(lambda: self._open_config_tab('detectors'))
+        config_menu.addAction(detectors_action)
+        
+        controllers_action = QAction("🎮 Controladores...", self)
+        controllers_action.triggered.connect(lambda: self._open_config_tab('controllers'))
+        config_menu.addAction(controllers_action)
+        
+        profiles_action = QAction("📁 Perfiles...", self)
+        profiles_action.triggered.connect(lambda: self._open_config_tab('profiles'))
+        config_menu.addAction(profiles_action)
+        
+        gestures_action = QAction("👋 Gestos...", self)
+        gestures_action.triggered.connect(lambda: self._open_config_tab('gestures'))
+        config_menu.addAction(gestures_action)
+        
+        ui_action = QAction("🎨 Interfaz...", self)
+        ui_action.triggered.connect(lambda: self._open_config_tab('ui'))
+        config_menu.addAction(ui_action)
         
         # Menú Herramientas
-        tools_menu = menubar.addMenu("Herramientas")
+        tools_menu = menubar.addMenu("🛠️ Herramientas")
         
-        recorder_action = QAction("Grabadora de Gestos...", self)
+        recorder_action = QAction("🎥 Grabadora de Gestos...", self)
         recorder_action.triggered.connect(self._open_gesture_recorder)
         tools_menu.addAction(recorder_action)
         
-        calibration_action = QAction("Calibrar Cámara...", self)
+        calibration_action = QAction("🎯 Calibrar Cámara...", self)
         calibration_action.triggered.connect(self._calibrate_camera)
         tools_menu.addAction(calibration_action)
         
-        test_action = QAction("Probar Controladores...", self)
+        test_action = QAction("🧪 Probar Controladores...", self)
         test_action.triggered.connect(self._test_controllers)
         tools_menu.addAction(test_action)
         
-        # Menú Ayuda
-        help_menu = menubar.addMenu("Ayuda")
+        tools_menu.addSeparator()
         
-        docs_action = QAction("Documentación", self)
+        log_viewer_action = QAction("📊 Visor de Logs...", self)
+        log_viewer_action.triggered.connect(self._show_log_viewer)
+        tools_menu.addAction(log_viewer_action)
+        
+        # Menú Ayuda
+        help_menu = menubar.addMenu("❓ Ayuda")
+        
+        docs_action = QAction("📚 Documentación", self)
         docs_action.triggered.connect(self._show_docs)
+        docs_action.setShortcut("F1")
         help_menu.addAction(docs_action)
         
-        about_action = QAction("Acerca de...", self)
+        help_menu.addSeparator()
+        
+        check_updates_action = QAction("🔄 Buscar Actualizaciones", self)
+        check_updates_action.triggered.connect(self._check_updates)
+        help_menu.addAction(check_updates_action)
+        
+        about_action = QAction("ℹ️ Acerca de NYX...", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
-        
-        pass
+    
+    def _setup_tray_icon(self):
+        """Configura el icono de la bandeja del sistema."""
+        try:
+            self.tray_icon = QSystemTrayIcon(self)
+            
+            # Crear menú para el icono de bandeja
+            tray_menu = QMenu()
+            
+            show_action = QAction("Mostrar", self)
+            show_action.triggered.connect(self.show)
+            tray_menu.addAction(show_action)
+            
+            hide_action = QAction("Ocultar", self)
+            hide_action.triggered.connect(self.hide)
+            tray_menu.addAction(hide_action)
+            
+            tray_menu.addSeparator()
+            
+            start_action = QAction("Iniciar Sistema", self)
+            start_action.triggered.connect(self._toggle_system)
+            tray_menu.addAction(start_action)
+            
+            tray_menu.addSeparator()
+            
+            exit_action = QAction("Salir", self)
+            exit_action.triggered.connect(self.close)
+            tray_menu.addAction(exit_action)
+            
+            self.tray_icon.setContextMenu(tray_menu)
+            
+            # Establecer icono
+            self.tray_icon.setIcon(self.windowIcon())
+            self.tray_icon.setToolTip("NYX - Control por Gestos")
+            self.tray_icon.show()
+            
+        except Exception as e:
+            logger.warning(f"No se pudo crear el icono de bandeja: {e}")
     
     def _connect_signals(self):
         """Conecta todas las señales."""
@@ -658,24 +848,37 @@ class MainWindow(QMainWindow):
         
         # Botón de configuración avanzada
         self.control_panel.advanced_button.clicked.connect(self._open_config_window)
+        
+        # Conectar señales del sistema
+        self.system_started.connect(self._on_system_started)
+        self.system_stopped.connect(self._on_system_stopped)
     
     def _load_config(self):
         """Carga la configuración inicial."""
-        # Cargar configuración del panel de control
-        panel_settings = {
-            'sensitivity': config.get_setting('detectors.hand.sensitivity', 0.7),
-            'activation_word': config.get_setting('app.activation_word', 'nyx'),
-            'hand_enabled': config.get_setting('detectors.hand.enabled', True),
-            'arm_enabled': config.get_setting('detectors.arm.enabled', False),
-            'voice_enabled': config.get_setting('detectors.voice.enabled', True)
-        }
-        self.control_panel.load_settings(panel_settings)
-        
-        # Actualizar perfil
-        last_profile = config.get_setting('app.last_profile')
-        if last_profile:
-            self.profile_selector.set_profile(last_profile)
-            self.current_profile = last_profile
+        try:
+            # Cargar configuración del panel de control
+            panel_settings = {
+                'sensitivity': config.get_setting('detectors.hand.sensitivity', 0.7),
+                'activation_word': config.get_setting('app.activation_word', 'nyx'),
+                'hand_enabled': config.get_setting('detectors.hand.enabled', True),
+                'arm_enabled': config.get_setting('detectors.arm.enabled', False),
+                'voice_enabled': config.get_setting('detectors.voice.enabled', True)
+            }
+            self.control_panel.load_settings(panel_settings)
+            
+            # Actualizar perfil
+            last_profile = config.get_setting('app.last_profile')
+            if last_profile:
+                self.profile_selector.set_profile(last_profile)
+                self.current_profile = last_profile
+                self.profile_label.setText(f"Perfil: {last_profile}")
+            
+            logger.info("Configuración cargada correctamente")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuración: {e}")
+    
+    # ===== MÉTODOS DE CONTROL DEL SISTEMA =====
     
     def _toggle_system(self):
         """Inicia o detiene el sistema."""
@@ -689,7 +892,7 @@ class MainWindow(QMainWindow):
         try:
             # 1. Verificar que haya un perfil seleccionado
             profile_name = self.profile_selector.get_current_profile()
-            if not profile_name or profile_name == "Sin perfiles":                                                                                                                                                                                                                                  
+            if not profile_name or profile_name == "Sin perfiles":
                 QMessageBox.warning(
                     self, 
                     "Perfil requerido",
@@ -697,7 +900,7 @@ class MainWindow(QMainWindow):
                 )
                 return
             
-            logger.info(f"🚀 Iniciando sistema con perfil: {profile_name}")
+            logger.info(f"🚀 Iniciando sistema NYX con perfil: {profile_name}")
             
             # 2. Obtener configuración COMPLETA del sistema
             system_config = config.get_system_config()
@@ -705,61 +908,78 @@ class MainWindow(QMainWindow):
             # 3. Actualizar config con settings del panel
             panel_settings = self.control_panel.get_settings()
             
-            system_config['hand_detection']['enabled'] = panel_settings['hand_enabled']
-            system_config['arm_detection']['enabled'] = panel_settings['arm_enabled']
-            system_config['voice_recognition']['enabled'] = panel_settings['voice_enabled']
-            system_config['voice_recognition']['activation_word'] = panel_settings['activation_word']
+            # Actualizar detección de manos
+            if 'hand_detection' in system_config:
+                system_config['hand_detection']['enabled'] = panel_settings['hand_enabled']
+            
+            # Actualizar detección de brazos
+            if 'arm_detection' in system_config:
+                system_config['arm_detection']['enabled'] = panel_settings['arm_enabled']
+            
+            # Actualizar reconocimiento de voz
+            if 'voice_recognition' in system_config:
+                system_config['voice_recognition']['enabled'] = panel_settings['voice_enabled']
+                system_config['voice_recognition']['activation_word'] = panel_settings['activation_word']
             
             # 4. Establecer perfil activo
             system_config['active_profile'] = profile_name
             
-            logger.info(f"📋 Configuración del sistema cargada")
+            logger.info("📋 Configuración del sistema cargada")
             
             # 5. Crear e iniciar GesturePipeline
             self.gesture_pipeline = GesturePipeline(system_config)
-
-            logger.info(f"🔧 Cargando perfil en pipeline: {profile_name}")
-            success = self.gesture_pipeline.load_profile(profile_name)
-
-            if not success:
-                raise Exception(f"No se pudo cargar el perfil: {profile_name}")
             
             # 6. Conectar señales del pipeline
             if hasattr(self.gesture_pipeline, 'gesture_detected'):
-                self.gesture_pipeline.gesture_detected.connect(self.gesture_detected)
+                self.gesture_pipeline.gesture_detected.connect(self._on_gesture_detected)
             
             if hasattr(self.gesture_pipeline, 'action_executed'):
-                self.gesture_pipeline.action_executed.connect(self.action_executed)
+                self.gesture_pipeline.action_executed.connect(self._on_action_executed)
             
-            # 7. Iniciar pipeline
+            if hasattr(self.gesture_pipeline, 'frame_available'):
+                self.gesture_pipeline.frame_available.connect(self._on_frame_available)
+            
+            if hasattr(self.gesture_pipeline, 'profile_changed'):
+                self.gesture_pipeline.profile_changed.connect(self._on_pipeline_profile_changed)
+            
+            # 7. Cargar perfil en el pipeline
+            logger.info(f"🔧 Cargando perfil en pipeline: {profile_name}")
+            success = self.gesture_pipeline.load_profile(profile_name)
+            
+            if not success:
+                raise Exception(f"No se pudo cargar el perfil: {profile_name}")
+            
+            # 8. Iniciar pipeline
             success = self.gesture_pipeline.start()
             
             if not success:
                 raise Exception("No se pudo iniciar el GesturePipeline")
             
-            # 8. Iniciar timers
-            if hasattr(self, 'ui_update_timer'):
+            # 9. Iniciar timers
+            if not self.ui_update_timer.isActive():
                 self.ui_update_timer.start(30)  # ~33 FPS para UI
-            elif hasattr(self, 'update_timer'):
-                self.update_timer.start(30)  # Nombre alternativo
             
-            self.pipeline_check_timer.start(1000)  # 1 segundo para chequear estado
+            if not self.pipeline_check_timer.isActive():
+                self.pipeline_check_timer.start(1000)  # 1 segundo para chequear estado
             
-            # 9. Actualizar estado
+            # 10. Actualizar estado
             self.is_system_running = True
             self.current_profile = profile_name
             
-            # 10. Actualizar UI
+            # 11. Actualizar UI
             self.control_panel.set_system_status(True)
             self.camera_view.set_camera_status(True)
             self.profile_label.setText(f"Perfil: {profile_name}")
             self.pipeline_status_label.setText("Pipeline: ✅")
             self.pipeline_status_label.setStyleSheet(f"color: {get_color('success')};")
             
-            self._log_to_console(f"🚀 Sistema iniciado con perfil: {profile_name}", get_color('success'))
+            # 12. Emitir señal de sistema iniciado
+            self.system_started.emit()
+            
+            self._log_to_console(f"🚀 Sistema NYX iniciado con perfil: {profile_name}", get_color('success'))
             self.status_bar.showMessage(f"Sistema activo - Perfil: {profile_name}", 3000)
             
-            logger.info(f"✅ Sistema iniciado exitosamente")
+            logger.info("✅ Sistema NYX iniciado exitosamente")
             
         except Exception as e:
             logger.error(f"❌ Error iniciando sistema: {e}", exc_info=True)
@@ -771,11 +991,11 @@ class MainWindow(QMainWindow):
             
             # Limpiar en caso de error
             self._cleanup_pipeline()
-
+    
     def _stop_system(self):
         """Detiene el sistema de control por gestos."""
         try:
-            logger.info("🛑 Deteniendo sistema...")
+            logger.info("🛑 Deteniendo sistema NYX...")
             
             # 1. Detener timers
             self.ui_update_timer.stop()
@@ -796,13 +1016,18 @@ class MainWindow(QMainWindow):
             self.pipeline_status_label.setText("Pipeline: ❌")
             self.pipeline_status_label.setStyleSheet(f"color: {get_color('error')};")
             
-            # 5. Limpiar vista de cámara
-            self.camera_view.update_frame(None)
+            # 5. Limpiar vista de cámara de forma segura
+            QTimer.singleShot(0, self.camera_view.clear_view)
+            self.frame_buffer = None
+            self.gesture_buffer = None
             
-            self._log_to_console("🛑 Sistema detenido", get_color('text_secondary'))
+            # 6. Emitir señal de sistema detenido
+            self.system_stopped.emit()
+            
+            self._log_to_console("🛑 Sistema NYX detenido", get_color('text_secondary'))
             self.status_bar.showMessage("Sistema detenido", 3000)
             
-            logger.info("✅ Sistema detenido correctamente")
+            logger.info("✅ Sistema NYX detenido correctamente")
             
         except Exception as e:
             logger.error(f"❌ Error deteniendo sistema: {e}", exc_info=True)
@@ -821,96 +1046,159 @@ class MainWindow(QMainWindow):
         self.camera_view.set_camera_status(False)
         self.ui_update_timer.stop()
         self.pipeline_check_timer.stop()
+    
+    # ===== MÉTODOS DE SEÑALES =====
+    
+    def _on_frame_available(self, data: dict):
+        """Manejador cuando hay un nuevo frame disponible del pipeline."""
+        try:
+            frame = data.get('frame')
+            gestures = data.get('gestures', {})
 
-
+            if frame is not None:
+                # Almacenar en buffer para UI
+                self.frame_buffer = frame.copy()
+                self.gesture_buffer = gestures.copy() if gestures else {}
+            
+            # Actualizar FPS
+            self._update_fps_counter()
+            
+        except Exception as e:
+            logger.error(f"Error procesando frame: {e}")
+    
+    def _on_gesture_detected(self, gesture_data: Dict[str, Any]):
+        """Manejador cuando se detecta un gesto."""
+        try:
+            gesture_name = gesture_data.get('gesture_name', 'Desconocido')
+            confidence = gesture_data.get('confidence', 0.0)
+            action_name = gesture_data.get('action_name', '')
+            
+            self._log_to_console(
+                f"👋 Gesto detectado: {gesture_name} ({confidence:.0%}) → {action_name}",
+                get_color('gesture_active')
+            )
+            
+            # Actualizar UI
+            self.gesture_status.update_gesture_info(gesture_name, action_name)
+            
+            # Actualizar estado de detectores
+            if 'hand_detected' in gesture_data:
+                self.gesture_status.update_detector_status(
+                    'Manos', 
+                    gesture_data['hand_detected'],
+                    gesture_data.get('hand_confidence', 0.0)
+                )
+            
+        except Exception as e:
+            logger.error(f"Error procesando gesto detectado: {e}")
+    
+    def _on_action_executed(self, action_data: Dict[str, Any], success: bool):
+        """Manejador cuando se ejecuta una acción."""
+        try:
+            action_name = action_data.get('action_name', 'Desconocida')
+            action_type = action_data.get('action_type', '')
+            
+            if success:
+                self._log_to_console(
+                    f"✅ Acción ejecutada: {action_name} ({action_type})",
+                    get_color('success')
+                )
+            else:
+                self._log_to_console(
+                    f"❌ Falló acción: {action_name} ({action_type})",
+                    get_color('error')
+                )
+            
+        except Exception as e:
+            logger.error(f"Error procesando acción ejecutada: {e}")
+    
+    def _on_pipeline_profile_changed(self, profile_name: str):
+        """Manejador cuando el pipeline cambia de perfil."""
+        logger.info(f"🔄 Pipeline cambió a perfil: {profile_name}")
+        self.current_profile = profile_name
+        self.profile_label.setText(f"Perfil: {profile_name}")
+    
+    def _on_system_started(self):
+        """Manejador cuando el sistema se inicia."""
+        # Notificación de bandeja
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.showMessage(
+                "NYX Iniciado",
+                f"Sistema de control por gestos activo\nPerfil: {self.current_profile}",
+                QSystemTrayIcon.MessageIcon.Information,
+                2000
+            )
+    
+    def _on_system_stopped(self):
+        """Manejador cuando el sistema se detiene."""
+        # Notificación de bandeja
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.showMessage(
+                "NYX Detenido",
+                "Sistema de control por gestos detenido",
+                QSystemTrayIcon.MessageIcon.Information,
+                2000
+            )
+    
+    # ===== MÉTODOS DE UI =====
+    
     def _update_ui(self):
         """Actualiza la interfaz de usuario con datos del pipeline."""
         try:
-            if not self.gesture_pipeline or not self.is_system_running:
+            if not self.is_system_running:
                 return
             
-            # 1. Obtener el frame más reciente del pipeline
-            latest_data = self.gesture_pipeline.get_latest_frame()
+            # 1. Actualizar frame de cámara si hay datos en buffer
+            if self.frame_buffer is not None:
+                # Actualizar información de gestos en la vista
+                self.camera_view.update_frame(self.frame_buffer, self.gesture_buffer)
+                # Renderizar el frame
+                self.camera_view.render_frame(self.frame_buffer)
             
-            if not latest_data:
-                # No hay datos nuevos
-                return
-            
-            # 2. Extraer datos
-            frame = latest_data.get('data')
-            gestures = latest_data.get('gestures', [])
-            
-            # 3. Actualizar vista de cámara
-            if frame is not None:
-                self.camera_view.update_frame(frame, gestures)
-            
-            # 4. Calcular FPS simple
+            # 2. Actualizar FPS en barra de estado
             current_time = time.time()
             elapsed = current_time - self.last_frame_time
-            if elapsed > 0:
-                fps = 1.0 / elapsed
-                self.fps_label.setText(f"FPS: {fps:.1f}")
-            self.last_frame_time = current_time
+            if elapsed > 0.5:  # Actualizar cada medio segundo
+                if self.fps_counter > 0:
+                    fps = self.fps_counter / elapsed
+                    self.fps_label.setText(f"FPS: {fps:.1f}")
+                    self.fps_counter = 0
+                    self.last_frame_time = current_time
             
-            # 5. Actualizar estado de detectores desde gestos
-            #if gestures:
-            #   self._update_detector_status_from_gestures(gestures)
+            # 3. Actualizar uso de memoria
+            self._update_memory_usage()
             
-            # 6. Actualizar estado del pipeline
+            # 4. Verificar estado del pipeline
             if hasattr(self.gesture_pipeline, 'is_running'):
-                is_running = self.gesture_pipeline.is_running
-                if not is_running:
+                if not self.gesture_pipeline.is_running:
                     self._log_to_console("⚠️ Pipeline detenido inesperadamente", get_color('warning'))
                     self._stop_system()
+            
+            # 5. Actualizar estado de cámara
+            if hasattr(self.gesture_pipeline, 'is_camera_active'):
+                camera_active = self.gesture_pipeline.is_camera_active()
+                camera_status = "✅" if camera_active else "❌"
+                self.camera_label.setText(f"Cámara: {camera_status}")
+                self.camera_view.set_camera_status(camera_active)
             
         except Exception as e:
             logger.error(f"❌ Error actualizando UI: {e}", exc_info=True)
     
-
-    def _update_detector_status_from_gestures(self, gestures: Dict[str, Any]):
-        """Actualiza el estado de detectores basado en gestos."""
+    def _update_fps_counter(self):
+        """Actualiza el contador de FPS."""
+        self.fps_counter += 1
+    
+    def _update_memory_usage(self):
+        """Actualiza el uso de memoria en la barra de estado."""
         try:
-            # Manos
-            if 'hand_detected' in gestures:
-                self.gesture_status.update_detector_status(
-                    'Manos', 
-                    gestures['hand_detected'],
-                    gestures.get('hand_confidence', 0.0)
-                )
-            
-            # Brazos
-            if 'arm_detected' in gestures:
-                self.gesture_status.update_detector_status(
-                    'Brazos',
-                    gestures['arm_detected'],
-                    gestures.get('arm_confidence', 0.0)
-                )
-            
-            # Voz (si está en los gestos)
-            if 'voice_active' in gestures:
-                self.gesture_status.update_detector_status(
-                    'Voz',
-                    gestures['voice_active'],
-                    gestures.get('voice_confidence', 0.0)
-                )
-            
-            # Postura
-            if 'pose_detected' in gestures:
-                self.gesture_status.update_detector_status(
-                    'Postura',
-                    gestures['pose_detected'],
-                    gestures.get('pose_confidence', 0.0)
-                )
-            
-            # Último gesto
-            if 'gesture_name' in gestures and gestures['gesture_name']:
-                self.gesture_status.update_gesture_info(
-                    gestures['gesture_name'],
-                    gestures.get('action_name', '')
-                )
-                
-        except Exception as e:
-            logger.error(f"Error actualizando estado de detectores: {e}")
+            import psutil
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            self.memory_label.setText(f"Mem: {memory_mb:.1f} MB")
+        except ImportError:
+            self.memory_label.setText("Mem: --")
+        except Exception:
+            self.memory_label.setText("Mem: --")
     
     def _check_pipeline_status(self):
         """Verifica periódicamente el estado del pipeline."""
@@ -924,163 +1212,183 @@ class MainWindow(QMainWindow):
                     self._log_to_console("⚠️ Pipeline se detuvo inesperadamente", get_color('error'))
                     self._stop_system()
             
-            # Actualizar etiqueta de cámara
-            if hasattr(self.gesture_pipeline, 'is_camera_active'):
-                camera_active = self.gesture_pipeline.is_camera_active()
-                self.camera_label.setText(f"Cámara: {'Activa' if camera_active else 'Inactiva'}")
-                self.camera_view.set_camera_status(camera_active)
-            
         except Exception as e:
             logger.error(f"Error verificando estado del pipeline: {e}")
     
-    def _on_gesture_detected(self, gesture_data: Dict[str, Any]):
-        """Manejador cuando se detecta un gesto."""
-        try:
-            gesture_name = gesture_data.get('gesture_name', 'Desconocido')
-            confidence = gesture_data.get('confidence', 0.0)
-            
-            self._log_to_console(
-                f"👋 Gestos: {gesture_name} ({confidence:.0%})",
-                get_color('gesture_active')
-            )
-            
-            # Actualizar UI
-            self.gesture_status.update_gesture_info(
-                gesture_name,
-                gesture_data.get('action_name', '')
-            )
-            
-        except Exception as e:
-            logger.error(f"Error procesando gesto detectado: {e}")
+    # ===== MÉTODOS DE PERFILES =====
     
-    def _on_action_executed(self, action_data: Dict[str, Any], success: bool):
-        """Manejador cuando se ejecuta una acción."""
+    def _on_profile_changed(self, profile_name: str):
+        """Manejador cuando cambia el perfil en el selector."""
         try:
-            action_name = action_data.get('action_name', 'Desconocida')
+            logger.info(f"🔄 Cambiando perfil a: {profile_name}")
             
-            if success:
-                self._log_to_console(
-                    f"✅ Acción: {action_name}",
-                    get_color('success')
-                )
-            else:
-                self._log_to_console(
-                    f"❌ Falló acción: {action_name}",
-                    get_color('error')
-                )
+            self.current_profile = profile_name
+            self.profile_label.setText(f"Perfil: {profile_name}")
+            
+            # Si el sistema está corriendo, actualizar pipeline
+            if self.is_system_running and self.gesture_pipeline:
+                logger.info(f"🚀 Pipeline activo, cambiando perfil...")
+                if hasattr(self.gesture_pipeline, 'set_active_profile'):
+                    success = self.gesture_pipeline.set_active_profile(profile_name)
+                    if success:
+                        self._log_to_console(f"🔄 Perfil cambiado a: {profile_name}", get_color('info'))
+                    else:
+                        self._log_to_console(f"❌ Error cambiando perfil", get_color('error'))
+            
+            # Guardar como último perfil usado
+            config.update_setting('app.last_profile', profile_name)
+            config.save_settings()
+            
+            logger.info("💾 Perfil guardado en settings")
             
         except Exception as e:
-            logger.error(f"Error procesando acción ejecutada: {e}")
+            logger.error(f"Error cambiando perfil: {e}")
+            self._log_to_console(f"❌ Error cambiando perfil: {str(e)}", get_color('error'))
+    
+    # ===== MÉTODOS DE CONFIGURACIÓN =====
+    
+    def _open_config_window(self):
+        """Abre la ventana de configuración."""
+        try:
+            if self.config_window is None:
+                self.config_window = ConfigWindow(self, self.gesture_pipeline)
+                
+                # Conectar señal de cambios aplicados
+                self.config_window.config_applied.connect(self._on_config_applied)
             
-
+            self.config_window.show()
+            self.config_window.raise_()
+            
+        except Exception as e:
+            logger.error(f"Error abriendo ventana de configuración: {e}")
+            QMessageBox.critical(self, "Error", f"No se pudo abrir la configuración:\n{str(e)}")
+    
+    def _open_config_tab(self, tab_name: str):
+        """Abre la ventana de configuración en una pestaña específica."""
+        self._open_config_window()
+        if self.config_window:
+            self.config_window.show_tab(tab_name)
+    
+    def _on_config_applied(self, changes: dict):
+        """Manejador cuando se aplican cambios desde ConfigWindow."""
+        try:
+            logger.info(f"📋 Aplicando cambios desde ConfigWindow: {list(changes.keys())}")
+            
+            if self.gesture_pipeline and self.is_system_running:
+                # Reconfigurar pipeline con nuevos ajustes
+                if hasattr(self.gesture_pipeline, 'reconfigure'):
+                    self.gesture_pipeline.reconfigure(changes)
+                
+                self._log_to_console("⚙️ Configuración actualizada en tiempo real", get_color('info'))
+            
+            # Recargar configuración en MainWindow si es necesario
+            if 'ui' in changes or 'general' in changes:
+                self._load_config()
+            
+        except Exception as e:
+            logger.error(f"Error aplicando cambios: {e}")
+            self._log_to_console(f"❌ Error aplicando cambios: {str(e)}", get_color('error'))
+    
+    # ===== MÉTODOS DE GESTIÓN DE PERFILES =====
+    
+    def _open_profile_manager(self):
+        """Abre el gestor de perfiles."""
+        try:
+            if self.profile_window is None:
+                self.profile_window = ProfileManagerWindow(self.profile_manager, self)
+                
+                # Cuando se guarda un perfil → recargar selector
+                self.profile_window.profile_saved.connect(self.profile_selector.load_profiles)
+                
+                # Cuando se selecciona un perfil → actualizar selector
+                self.profile_window.profile_selected.connect(self.profile_selector.set_profile)
+            
+            self.profile_window.show()
+            self.profile_window.raise_()
+            
+        except Exception as e:
+            logger.error(f"Error abriendo gestor de perfiles: {e}")
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el gestor de perfiles:\n{str(e)}")
+    
+    # ===== MÉTODOS DE LOGS =====
+    
     def _log_to_console(self, message: str, color: str = None):
         """Agrega un mensaje a la consola de logs."""
         try:
             timestamp = time.strftime("%H:%M:%S")
             
             if color:
-                self.log_console.append(
-                    f'<span style="color: {color}">[{timestamp}] {message}</span>'
-                )
+                html = f'<span style="color: {color}">[{timestamp}] {message}</span>'
             else:
-                self.log_console.append(f"[{timestamp}] {message}")
+                html = f'<span style="color: {get_color("text_primary")}">[{timestamp}] {message}</span>'
             
-            #if color:
-            #    html = f'<span style="color: {color}">[{timestamp}] {message}</span>'
-            #else:
-            #    html = f'<span style="color: {get_color(\"text_primary\")}">[{timestamp}] {message}</span>'
-            #self.log_console.append(html)
-                
-                
+            self.log_console.append(html)
+            
             # Auto-scroll al final
-            self.log_console.verticalScrollBar().setValue(
-                self.log_console.verticalScrollBar().maximum()
-            )
-
+            scrollbar = self.log_console.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+            
             # Limitar cantidad de líneas
-            max_lines = 200
+            max_lines = 500
             while self.log_console.document().lineCount() > max_lines:
-                    cursor = self.log_console.textCursor()
-                    cursor.movePosition(cursor.MoveOperation.Start)
-                    cursor.select(cursor.SelectionType.LineUnderCursor)
-                    cursor.removeSelectedText()
-                    cursor.deleteChar()
+                cursor = self.log_console.textCursor()
+                cursor.movePosition(cursor.MoveOperation.Start)
+                cursor.select(cursor.SelectionType.LineUnderCursor)
+                cursor.removeSelectedText()
+                cursor.deleteChar()
+                
         except Exception as e:
             logger.error(f"Error escribiendo en consola: {e}")
     
-    def _on_profile_changed(self, profile_name: str):
-        """Manejador cuando cambia el perfil."""
-        try:
-            print(f"🔄 [MainWindow] Cambiando perfil a: {profile_name}")
-
-            self.current_profile = profile_name
-            self.profile_label.setText(f"Perfil: {profile_name}")
-
-            # DEBUG: Verificar qué hay en config
-            from utils.config_loader import config
-            print(f"📂 [MainWindow] Config path: {config.config_dir}")
-            
-            # Si el sistema está corriendo, actualizar pipeline
-            if self.is_system_running and self.gesture_pipeline:
-                print(f"🚀 [MainWindow] Pipeline activo, cambiando perfil...")
-                if hasattr(self.gesture_pipeline, 'set_active_profile'):
-                    success = self.gesture_pipeline.set_active_profile(profile_name)
-                    print(f"✅ [MainWindow] set_active_profile result: {success}")
-                
-                self._log_to_console(
-                    f"🔄 Perfil cambiado a: {profile_name}",
-                    get_color('info')
-                )
-            
-            # Guardar como último perfil usado
-            config.update_setting('app.last_profile', profile_name)
-            config.save_settings()
-
-            print(f"💾 [MainWindow] Perfil guardado en settings")
-
-        except Exception as e:
-            logger.error(f"Error cambiando perfil: {e}")
-            print(f"❌ [MainWindow] Error cambiando perfil: {e}")
-            import traceback
-            traceback.print_exc()
-
+    # ===== MÉTODOS DE MENÚ (IMPLEMENTACIÓN) =====
     
-    def _open_config_window(self):
-        """Abre la ventana de configuración."""
-        if self.config_window is None:
-            self.config_window = ConfigWindow(self)
-        
-        self.config_window.show()
-        self.config_window.raise_()
-    
-    def _open_profile_manager(self):
-        """Abre el gestor de perfiles."""
-
-        if self.profile_window is None:
-            print(f"🔄 [MainWindow] Cambiando perfil")  # ← ESTO SÍ VA AQUÍ
-
-            self.profile_window = ProfileManagerWindow(
-                self.profile_manager,
-                self
-            )
-
-            # Cuando se guarda un perfil → recargar selector
-            self.profile_window.profile_saved.connect(
-                self.profile_selector.load_profiles
-            )
-
-            self.profile_window.show()
-        self.profile_window.raise_()
-
-    
-    # Métodos de menú (implementación básica)
     def _new_profile(self):
         """Crea un nuevo perfil."""
-        QMessageBox.information(self, "Nuevo Perfil", "Función en desarrollo...")
+        try:
+            from ui.profile_editor import ProfileEditorDialog
+            
+            dialog = ProfileEditorDialog(self)
+            if dialog.exec():
+                new_profile = dialog.get_profile_data()
+                # Guardar perfil
+                self.profile_manager.save_profile(new_profile['name'], new_profile)
+                # Recargar lista de perfiles
+                self.profile_selector.load_profiles()
+                self._log_to_console(f"📄 Nuevo perfil creado: {new_profile['name']}", get_color('success'))
+        except ImportError:
+            QMessageBox.information(self, "Función en desarrollo", "Editor de perfiles no disponible.")
+        except Exception as e:
+            logger.error(f"Error creando perfil: {e}")
+            QMessageBox.critical(self, "Error", f"No se pudo crear el perfil:\n{str(e)}")
     
     def _load_profile(self):
         """Carga un perfil desde archivo."""
-        QMessageBox.information(self, "Cargar Perfil", "Función en desarrollo...")
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Cargar Perfil",
+                "",
+                "Archivos JSON (*.json);;Todos los archivos (*.*)"
+            )
+            
+            if file_path:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    import json
+                    profile_data = json.load(f)
+                
+                profile_name = profile_data.get('profile_name', Path(file_path).stem)
+                
+                # Guardar en el sistema
+                self.profile_manager.save_profile(profile_name, profile_data)
+                
+                # Recargar lista de perfiles
+                self.profile_selector.load_profiles()
+                
+                self._log_to_console(f"📂 Perfil cargado: {profile_name}", get_color('success'))
+                
+        except Exception as e:
+            logger.error(f"Error cargando perfil: {e}")
+            QMessageBox.critical(self, "Error", f"No se pudo cargar el perfil:\n{str(e)}")
     
     def _save_config(self):
         """Guarda la configuración actual."""
@@ -1103,27 +1411,13 @@ class MainWindow(QMainWindow):
             logger.error(f"Error guardando configuración: {e}")
             QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{str(e)}")
     
-    def _open_detectors_config(self):
-        """Abre configuración de detectores."""
-        self._open_config_window()
-        if self.config_window:
-            self.config_window.show_tab('detectors')
+    def _import_config(self):
+        """Importa configuración desde archivo."""
+        QMessageBox.information(self, "Importar", "Función en desarrollo...")
     
-    def _open_controllers_config(self):
-        """Abre configuración de controladores."""
-        self._open_config_window()
-        if self.config_window:
-            self.config_window.show_tab('controllers')
-    
-    def _open_gestures_config(self):
-        """Abre configuración de gestos."""
-        self._open_config_window()
-        if self.config_window:
-            self.config_window.show_tab('gestures')
-    
-    def _open_themes_config(self):
-        """Abre configuración de temas."""
-        QMessageBox.information(self, "Temas", "Función en desarrollo...")
+    def _export_config(self):
+        """Exporta configuración a archivo."""
+        QMessageBox.information(self, "Exportar", "Función en desarrollo...")
     
     def _open_gesture_recorder(self):
         """Abre la grabadora de gestos."""
@@ -1137,29 +1431,70 @@ class MainWindow(QMainWindow):
         """Abre la prueba de controladores."""
         QMessageBox.information(self, "Probar", "Función en desarrollo...")
     
+    def _show_log_viewer(self):
+        """Muestra el visor de logs avanzado."""
+        QMessageBox.information(self, "Visor de Logs", "Función en desarrollo...")
+    
     def _show_docs(self):
         """Muestra la documentación."""
         QMessageBox.information(self, "Documentación", "Función en desarrollo...")
     
+    def _check_updates(self):
+        """Busca actualizaciones."""
+        QMessageBox.information(self, "Actualizaciones", "Función en desarrollo...")
+    
     def _show_about(self):
-        """Muestra el diálogo 'Acerca de'."""
-        about_text = """
-        <h2>Nyx</h2>
-        <p><b>Versión:</b> 2.0.0</p>
-        <p><b>Descripción:</b> Sistema de control por gestos para computadora</p>
-        <p><b>Arquitectura:</b> Modular y extensible</p>
-        <p><b>Módulos:</b> Manos, Brazos, Voz, Teclado, Mouse, Ventanas</p>
-        <hr>
-        <p>Desarrollado con Python, PyQt6 y MediaPipe</p>
-        <p>© 2025 - Sistema de Control por Gestos</p>
+        """Muestra el diálogo 'Acerca de NYX'."""
+        about_text = f"""
+        <div style="text-align: center;">
+            <h1 style="color: {get_color('primary')}; margin-bottom: 10px;">NYX</h1>
+            <h3 style="color: {get_color('text_secondary')}; margin-top: 0;">
+                Sistema de Control por Gestos
+            </h3>
+            
+            <div style="background-color: {get_color('surface')}; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <p><b>Versión:</b> 2.0.0</p>
+                <p><b>Arquitectura:</b> Modular y extensible</p>
+                <p><b>Estado:</b> {'✅ Activo' if self.is_system_running else '⏸ Detenido'}</p>
+                <p><b>Perfil actual:</b> {self.current_profile or 'Ninguno'}</p>
+            </div>
+            
+            <div style="margin: 15px 0;">
+                <h4>Módulos disponibles:</h4>
+                <p>• 🎯 Detección de manos (MediaPipe)</p>
+                <p>• 🎤 Reconocimiento de voz</p>
+                <p>• ⌨️ Control de teclado</p>
+                <p>• 🖱️ Control de mouse</p>
+                <p>• 🪟 Control de ventanas</p>
+                <p>• 💻 Ejecución de comandos</p>
+            </div>
+            
+            <hr style="border-color: {get_color('border')}; margin: 20px 0;">
+            
+            <p style="color: {get_color('text_secondary')}; font-size: 12px;">
+                Desarrollado con Python, PyQt6 y MediaPipe<br>
+                © 2025 - Sistema de Control por Gestos NYX
+            </p>
+        </div>
         """
         
-        QMessageBox.about(self, "Acerca de", about_text)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Acerca de NYX")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(about_text)
+        # msg_box.setIconPixmap(QPixmap(":/icons/nyx_logo.png") if hasattr(self, 'nyx_logo') else QPixmap())
+        msg_box.exec()
+    
+    # ===== EVENTOS =====
     
     def closeEvent(self, event):
         """Manejador cuando se cierra la ventana."""
         try:
-            logger.info("🔒 Cerrando aplicación...")
+            logger.info("🔒 Cerrando aplicación NYX...")
+            
+            # Detener todos los timers primero
+            self.ui_update_timer.stop()
+            self.pipeline_check_timer.stop()
             
             # Detener sistema si está corriendo
             if self.is_system_running:
@@ -1168,42 +1503,36 @@ class MainWindow(QMainWindow):
             # Cerrar ventanas hijas
             if self.config_window:
                 self.config_window.close()
+                self.config_window = None
             
             if self.profile_window:
                 self.profile_window.close()
+                self.profile_window = None
             
             # Guardar configuración
             self._save_config()
             
-            logger.info("✅ Aplicación cerrada correctamente")
+            # Ocultar icono de bandeja
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.hide()
+            
+            logger.info("✅ Aplicación NYX cerrada correctamente")
             event.accept()
             
         except Exception as e:
             logger.error(f"❌ Error cerrando aplicación: {e}")
             event.accept()
-        """Manejador cuando se cierra la ventana."""
-        # Detener sistema si está corriendo
-        if self.is_system_running:
-            self._stop_system()
-        
-        # Cerrar ventanas hijas
-        if self.config_window:
-            self.config_window.close()
-        
-        if self.profile_window:
-            self.profile_window.close()
-        
-        # Guardar configuración
-        self._save_config()
-        
-        logger.info("Aplicación cerrada")
-        event.accept()
 
 
 # Función para ejecutar la aplicación
 def run_app():
-    """Ejecuta la aplicación principal."""
+    """Ejecuta la aplicación principal NYX."""
     app = QApplication(sys.argv)
+    
+    # Establecer información de la aplicación
+    app.setApplicationName("NYX")
+    app.setApplicationVersion("2.0.0")
+    app.setOrganizationName("NYX Project")
     
     # Aplicar tema
     styles.apply_to_app(app)

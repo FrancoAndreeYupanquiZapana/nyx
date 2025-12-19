@@ -6,11 +6,13 @@ Sigue la arquitectura modular y usa rutas relativas correctas.
 """
 
 import yaml
-import json
-import os
-from pathlib import Path
-from typing import Dict, Any, Optional, Union
+from typing import Dict, List,Any, Optional, Union
 import logging
+import os
+import json
+import time
+from pathlib import Path
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ class ConfigLoader:
         Args:
             config_dir: Directorio de configuraciones (opcional, auto-detecta)
         """
+
         # Auto-detectar directorio de configuración de NYX
         if config_dir is None:
             self.config_dir = self._find_config_dir()
@@ -496,5 +499,5 @@ class ConfigLoader:
             'settings_keys': list(self.settings.keys())
         }
 
-# ¡NO hay instancia global aquí!
-# Cada módulo debe crear su propia instancia con la ruta correcta
+# Instancia global para uso en toda la aplicación
+config = ConfigLoader()

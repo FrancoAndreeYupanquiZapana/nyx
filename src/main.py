@@ -47,8 +47,8 @@ if missing_critical:
 
 # Ahora importamos todo
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
-from PyQt6.QtCore import Qt, QTimer, QThread
-from PyQt6.QtGui import QPixmap, QFont, QColor
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap, QFont, QColor, QPainter
 
 # Importar nuestros módulos según arquitectura NYX
 from utils.logger import NYXLogger
@@ -71,6 +71,9 @@ from controllers.keyboard_controller import KeyboardController
 from controllers.mouse_controller import MouseController
 from controllers.window_controller import WindowController
 from controllers.bash_controller import BashController
+
+# Importar ConfigWindow
+from ui.config_window import ConfigWindow
 
 
 class SplashScreen(QSplashScreen):
@@ -98,7 +101,7 @@ class SplashScreen(QSplashScreen):
     
     def draw_logo(self):
         """Dibuja el logo de NYX en el splash."""
-        painter = self
+        painter = QPainter(self.pixmap())
         painter.setPen(QColor(0, 200, 255))
         painter.setFont(QFont("Segoe UI", 48, QFont.Weight.Bold))
         painter.drawText(250, 200, "🎮 NYX")
@@ -106,6 +109,7 @@ class SplashScreen(QSplashScreen):
         painter.setFont(QFont("Segoe UI", 14))
         painter.setPen(QColor(150, 150, 180))
         painter.drawText(280, 250, "Control por Gestos y Voz")
+        painter.end()
     
     def update_progress(self, message: str, progress: int = 0):
         """Actualiza el mensaje de progreso."""
@@ -159,6 +163,14 @@ class InitializationWorker(QThread):
         except Exception as e:
             self.error = str(e)
             self.progress_update.emit(f"Error: {e}", 0)
+    
+    def _check_directories(self):
+        """Verifica directorios necesarios."""
+        directories = ["logs", "config", "profiles"]
+        for directory in directories:
+            path = Path(directory)
+            if not path.exists():
+                path.mkdir(parents=True, exist_ok=True)
 
 
 class NYXApplication:
@@ -168,8 +180,10 @@ class NYXApplication:
         self.app = None
         self.splash = None
         self.main_window = None
+        self.config_window = None
         self.gesture_pipeline = None
         self.gesture_integrator = None
+        self.args = None
         
         # Instancias de componentes (se crearán después)
         self.config_loader = None
@@ -203,7 +217,8 @@ class NYXApplication:
     
     def _setup_config(self):
         """Configura el cargador de configuración."""
-        self.config_loader = ConfigLoader(config_dir="src/config")
+        config_dir = "src/config" if self.args is None or self.args.config_dir is None else self.args.config_dir
+        self.config_loader = ConfigLoader(config_dir=config_dir)
         
         # Verificar configuración básica
         config_info = self.config_loader.get_config_info()
@@ -218,7 +233,8 @@ class NYXApplication:
             "recorded_gestures",
             "exports",
             "backups",
-            "training_data"
+            "training_data",
+            "profiles"
         ]
         
         for directory in directories:
@@ -333,6 +349,9 @@ class NYXApplication:
             
             # 7. Cargar perfil activo
             active_profile = system_config.get('active_profile', 'gamer')
+            if self.args and self.args.profile:
+                active_profile = self.args.profile
+                
             profile_data = self.config_loader.get_profile(active_profile)
             
             if profile_data:
@@ -430,6 +449,69 @@ class NYXApplication:
             
             self.main_window.log_message(welcome_msg, "info")
     
+    def _setup_config_window_integration(self):
+        """Configura la integración con ConfigWindow."""
+        if hasattr(self.main_window, 'control_panel'):
+            # Conectar botón avanzado
+            if hasattr(self.main_window.control_panel, 'advanced_button'):
+                self.main_window.control_panel.advanced_button.clicked.connect(self._open_config_window)
+            
+            # Conectar menú de configuración
+            if hasattr(self.main_window, 'menu_bar'):
+                config_action = self.main_window.menu_bar.findChild("actionConfiguracion")
+                if config_action:
+                    config_action.triggered.connect(self._open_config_window)
+    
+    def _open_config_window(self):
+        """Abre la ventana de configuración."""
+        if self.gesture_pipeline is None:
+            QMessageBox.warning(
+                self.main_window,
+                "Sistema no inicializado",
+                "El sistema debe estar inicializado primero."
+            )
+            return
+        
+        if self.config_window is None:
+            self.config_window = ConfigWindow(self.main_window, self.gesture_pipeline)
+            
+            # Conectar señal de cambios aplicados
+            if hasattr(self.config_window, 'config_applied'):
+                self.config_window.config_applied.connect(self._on_config_applied)
+            
+            # Conectar señal de cierre
+            self.config_window.destroyed.connect(lambda: self._on_config_window_closed())
+        
+        self.config_window.show()
+        self.config_window.raise_()
+        self.config_window.activateWindow()
+    
+    def _on_config_applied(self, changes: dict):
+        """Manejador cuando se aplican cambios desde ConfigWindow."""
+        try:
+            self.logger.info(f"📋 Aplicando cambios desde ConfigWindow: {list(changes.keys())}")
+            
+            if self.gesture_pipeline and hasattr(self.gesture_pipeline, 'is_running'):
+                # Reconfigurar pipeline con nuevos ajustes
+                if 'detectors' in changes:
+                    if hasattr(self.gesture_pipeline, 'reconfigure_detectors'):
+                        self.gesture_pipeline.reconfigure_detectors(changes['detectors'])
+                
+                if 'controllers' in changes:
+                    if hasattr(self.gesture_pipeline, 'reconfigure_controllers'):
+                        self.gesture_pipeline.reconfigure_controllers(changes['controllers'])
+                
+                # Actualizar UI si es necesario
+                if hasattr(self.main_window, '_log_to_console'):
+                    self.main_window._log_to_console("⚙️ Configuración actualizada en tiempo real", "info")
+        
+        except Exception as e:
+            self.logger.error(f"Error aplicando cambios: {e}")
+    
+    def _on_config_window_closed(self):
+        """Limpia referencia a ConfigWindow al cerrarse."""
+        self.config_window = None
+    
     def run(self):
         """Ejecuta la aplicación principal."""
         exit_code = 0
@@ -486,24 +568,27 @@ class NYXApplication:
             if hasattr(self.main_window, 'set_profile_manager'):
                 self.main_window.set_profile_manager(self.config_loader)
             
-            # 13. Mostrar advertencias si es necesario
+            # 13. Configurar integración con ConfigWindow
+            self._setup_config_window_integration()
+            
+            # 14. Mostrar advertencias si es necesario
             self.splash.update_progress("Finalizando...", 90)
             if not self._show_startup_warnings(camera_available):
                 return 0
             
-            # 14. Ocultar splash y mostrar ventana principal
+            # 15. Ocultar splash y mostrar ventana principal
             self.splash.finish(self.main_window)
             self.main_window.show()
             self.main_window.raise_()
             self.main_window.activateWindow()
             
-            # 15. Configurar cierre limpio
+            # 16. Configurar cierre limpio
             self.app.aboutToQuit.connect(self.cleanup)
             
-            # 16. Mostrar mensaje de bienvenida
+            # 17. Mostrar mensaje de bienvenida
             QTimer.singleShot(500, self._show_welcome_message)
             
-            # 17. Log de inicio exitoso
+            # 18. Log de inicio exitoso
             self.logger.info("=" * 60)
             self.logger.info("🎉 NYX INICIADO EXITOSAMENTE")
             self.logger.info(f"📁 Directorio: {Path.cwd()}")
@@ -512,7 +597,7 @@ class NYXApplication:
             self.logger.info(f"👤 Perfil activo: {system_config.get('active_profile', 'gamer')}")
             self.logger.info("=" * 60)
             
-            # 18. Ejecutar aplicación Qt
+            # 19. Ejecutar aplicación Qt
             exit_code = self.app.exec()
             
         except Exception as e:
@@ -538,7 +623,7 @@ class NYXApplication:
             
             <p style="color: #888;">
             Si el problema persiste, reporta el error en:<br>
-            https://github.com/tu-usuario/nyx/issues
+            https://github.com/francoyupanquizapana/nyx/issues
             </p>
             """
             
@@ -565,18 +650,24 @@ class NYXApplication:
                 if hasattr(self.gesture_pipeline, 'cleanup'):
                     self.gesture_pipeline.cleanup()
             
-            # 2. Cerrar ventana principal
+            # 2. Cerrar ventana de configuración si está abierta
+            if self.config_window:
+                if hasattr(self.config_window, 'cleanup'):
+                    self.config_window.cleanup()
+                self.config_window.close()
+            
+            # 3. Cerrar ventana principal
             if self.main_window:
                 if hasattr(self.main_window, 'cleanup'):
                     self.main_window.cleanup()
                 self.main_window.close()
             
-            # 3. Guardar configuración
+            # 4. Guardar configuración
             if self.config_loader:
                 self.config_loader.save_settings()
                 self.config_loader.save_system_config()
             
-            # 4. Log de cierre
+            # 5. Log de cierre
             if hasattr(self, 'logger'):
                 self.logger.info("✅ Recursos limpiados correctamente")
                 self.logger.log_system_stop()
@@ -671,7 +762,7 @@ def main():
     # Crear y ejecutar aplicación
     app = NYXApplication()
     
-    # Pasar argumentos a la aplicación (se usarán en run())
+    # Pasar argumentos a la aplicación
     app.args = args
     
     return app.run()
@@ -687,49 +778,3 @@ if __name__ == "__main__":
         print(f"\n❌ ERROR NO MANEJADO: {e}")
         traceback.print_exc()
         sys.exit(1)
-
-"""
-integracion para mainwindows
-# En MainWindow.__init__():
-def __init__(self):
-    super().__init__()
-    # ... código existente ...
-    
-    # ConfigWindow
-    self.config_window = None
-    
-    # Conectar ConfigWindow
-    self.control_panel.advanced_button.clicked.connect(self._open_config_window)
-
-# Agregar método para abrir ConfigWindow:
-def _open_config_window(self):
-    """"""Abre la ventana de configuración.
-    if self.config_window is None:
-        self.config_window = ConfigWindow(self, self.gesture_pipeline)
-        
-        # Conectar señal de cambios aplicados
-        self.config_window.config_applied.connect(self._on_config_applied)
-    
-    self.config_window.show()
-    self.config_window.raise_()
-
-def _on_config_applied(self, changes: dict):
-    Manejador cuando se aplican cambios desde ConfigWindow.
-    try:
-        logger.info(f"📋 Aplicando cambios desde ConfigWindow: {changes.keys()}")
-        
-        if self.gesture_pipeline and self.is_system_running:
-            # Reconfigurar pipeline con nuevos ajustes
-            if 'detectors' in changes:
-                self.gesture_pipeline.reconfigure_detectors(changes['detectors'])
-            
-            if 'controllers' in changes:
-                self.gesture_pipeline.reconfigure_controllers(changes['controllers'])
-            
-            # Actualizar UI si es necesario
-            self._log_to_console("⚙️ Configuración actualizada en tiempo real", 
-                               get_color('info'))
-    
-    except Exception as e:
-        logger.error(f"Error aplicando cambios: {e}")
-"""

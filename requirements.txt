@@ -54,3 +54,32 @@ colorama==0.4.6
 # pytest==7.4.3
 # pytest-qt==4.2.0
 # tqdm==4.66.1
+
+
+# Dependencias principales
+#PyQt6>=6.5.0
+#opencv-python>=4.8.0
+#mediapipe>=0.10.0
+#numpy>=1.24.0
+
+# Reconocimiento de voz
+#speechrecognition>=3.10.0
+#pyaudio>=0.2.13
+
+# Control del sistema
+#pyautogui>=0.9.54
+#pygetwindow>=0.0.9
+#keyboard>=0.13.5
+#mouse>=0.7.1
+
+# Utilidades
+#python-dotenv>=1.0.0
+#pyyaml>=6.0
+#colorama>=0.4.6
+
+# Serialización
+#pickle5>=0.0.12
+
+# Testing
+#pytest>=7.4.0
+#pytest-qt>=4.2.0

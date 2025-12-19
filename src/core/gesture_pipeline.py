@@ -2,6 +2,7 @@
 🎮 GESTURE PIPELINE - Cerebro del Sistema NYX
 =============================================
 Coordina todo el flujo: cámara → detección → perfil → ejecución → UI.
+Versión completa con integración GesturePipelineIntegration y VoiceRecognizer.
 """
 
 import cv2
@@ -35,8 +36,206 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class GesturePipeline(QObject):
-    """Pipeline principal del sistema NYX."""
+class GesturePipelineIntegration:
+    """Clase base para integración de componentes del pipeline."""
+    
+    def __init__(self):
+        """Inicializa la integración del pipeline."""
+        self._gesture_buffer = []  # Buffer para gestos recientes
+        self._voice_buffer = []    # Buffer para comandos de voz
+        self._action_buffer = []   # Buffer para acciones
+        self._integration_lock = threading.RLock()
+    
+    def process_gesture(self, gesture_data: Dict) -> Optional[Dict]:
+        """
+        Procesa un gesto detectado y lo convierte en acción.
+        
+        Args:
+            gesture_data: Datos del gesto detectado
+            
+        Returns:
+            Acción a ejecutar o None
+        """
+        with self._integration_lock:
+            # Agregar al buffer
+            self._gesture_buffer.append(gesture_data)
+            if len(self._gesture_buffer) > 10:
+                self._gesture_buffer.pop(0)
+            
+            # Extraer información del gesto
+            gesture_name = gesture_data.get('gesture')
+            hand_type = gesture_data.get('hand', 'unknown')
+            source = gesture_data.get('source', 'hand')
+            confidence = gesture_data.get('confidence', 0)
+            
+            # Buscar acción correspondiente en el perfil
+            action = self._find_action_for_gesture(gesture_name, source, hand_type)
+            
+            if action:
+                # Añadir metadata
+                action.update({
+                    'trigger': 'gesture',
+                    'gesture_data': gesture_data,
+                    'timestamp': time.time(),
+                    'confidence': confidence
+                })
+                
+                # Agregar al buffer de acciones
+                self._action_buffer.append(action)
+                if len(self._action_buffer) > 10:
+                    self._action_buffer.pop(0)
+                
+                return action
+        
+        return None
+    
+    def process_voice_command(self, voice_data: Dict) -> Optional[Dict]:
+        """
+        Procesa un comando de voz y lo convierte en acción.
+        
+        Args:
+            voice_data: Datos del comando de voz
+            
+        Returns:
+            Acción a ejecutar o None
+        """
+        with self._integration_lock:
+            # Agregar al buffer
+            self._voice_buffer.append(voice_data)
+            if len(self._voice_buffer) > 10:
+                self._voice_buffer.pop(0)
+            
+            # Extraer texto
+            command_text = voice_data.get('text', '').lower().strip()
+            
+            if not command_text:
+                return None
+            
+            # Buscar acción correspondiente en el perfil
+            action = self._find_action_for_voice(command_text)
+            
+            if action:
+                # Añadir metadata
+                action.update({
+                    'trigger': 'voice',
+                    'voice_data': voice_data,
+                    'timestamp': time.time()
+                })
+                
+                # Agregar al buffer de acciones
+                self._action_buffer.append(action)
+                if len(self._action_buffer) > 10:
+                    self._action_buffer.pop(0)
+                
+                return action
+        
+        return None
+    
+    def _find_action_for_gesture(self, gesture_name: str, source: str, 
+                                 hand_type: str) -> Optional[Dict]:
+        """
+        Busca una acción correspondiente a un gesto en el perfil.
+        
+        Args:
+            gesture_name: Nombre del gesto
+            source: Fuente del gesto (hand, arm)
+            hand_type: Tipo de mano (left, right)
+            
+        Returns:
+            Acción correspondiente o None
+        """
+        if not hasattr(self, 'profile_runtime') or not self.profile_runtime:
+            return None
+        
+        try:
+            # Intentar obtener acción del perfil
+            if hasattr(self.profile_runtime, 'get_action_for_gesture'):
+                return self.profile_runtime.get_action_for_gesture(
+                    gesture_name=gesture_name,
+                    source=source,
+                    hand_type=hand_type
+                )
+            
+            # Método alternativo: buscar en mapeo de gestos
+            if hasattr(self.profile_runtime, 'gesture_mappings'):
+                gesture_mappings = self.profile_runtime.gesture_mappings
+                
+                # Buscar coincidencia exacta
+                key = f"{gesture_name}_{source}_{hand_type}"
+                if key in gesture_mappings:
+                    return gesture_mappings[key]
+                
+                # Buscar coincidencia parcial
+                for mapping_key, action in gesture_mappings.items():
+                    if gesture_name in mapping_key and source in mapping_key:
+                        return action
+            
+        except Exception as e:
+            logger.error(f"❌ Error buscando acción para gesto: {e}")
+        
+        return None
+    
+    def _find_action_for_voice(self, command_text: str) -> Optional[Dict]:
+        """
+        Busca una acción correspondiente a un comando de voz.
+        
+        Args:
+            command_text: Texto del comando de voz
+            
+        Returns:
+            Acción correspondiente o None
+        """
+        if not hasattr(self, 'profile_runtime') or not self.profile_runtime:
+            return None
+        
+        try:
+            # Intentar obtener acción del perfil
+            if hasattr(self.profile_runtime, 'get_action_for_voice'):
+                return self.profile_runtime.get_action_for_voice(command_text)
+            
+            # Método alternativo: buscar en mapeo de voz
+            if hasattr(self.profile_runtime, 'voice_mappings'):
+                voice_mappings = self.profile_runtime.voice_mappings
+                
+                # Buscar coincidencia exacta
+                if command_text in voice_mappings:
+                    return voice_mappings[command_text]
+                
+                # Buscar coincidencia parcial
+                for voice_key, action in voice_mappings.items():
+                    if voice_key.lower() in command_text or command_text in voice_key.lower():
+                        return action
+            
+        except Exception as e:
+            logger.error(f"❌ Error buscando acción para voz: {e}")
+        
+        return None
+    
+    def get_gesture_buffer(self) -> List[Dict]:
+        """Obtiene el buffer de gestos recientes."""
+        with self._integration_lock:
+            return self._gesture_buffer.copy()
+    
+    def get_voice_buffer(self) -> List[Dict]:
+        """Obtiene el buffer de comandos de voz recientes."""
+        with self._integration_lock:
+            return self._voice_buffer.copy()
+    
+    def get_action_buffer(self) -> List[Dict]:
+        """Obtiene el buffer de acciones recientes."""
+        with self._integration_lock:
+            return self._action_buffer.copy()
+    
+    def clear_buffers(self):
+        """Limpia todos los buffers."""
+        with self._integration_lock:
+            self._gesture_buffer.clear()
+            self._voice_buffer.clear()
+            self._action_buffer.clear()
+
+
+class GesturePipeline(QObject, GesturePipelineIntegration):
+    """Pipeline principal del sistema NYX con integración completa."""
     
     # Señales PyQt6 para comunicación con la UI
     if QT_AVAILABLE:
@@ -47,6 +246,9 @@ class GesturePipeline(QObject):
         error_occurred = pyqtSignal(str, str)         # (tipo_error, mensaje)
         profile_changed = pyqtSignal(str, dict)       # (nombre_perfil, info)
         stats_updated = pyqtSignal(dict)              # Estadísticas actualizadas
+        pipeline_started = pyqtSignal()               # Pipeline iniciado
+        pipeline_stopped = pyqtSignal()               # Pipeline detenido
+        voice_event = pyqtSignal(str, dict)           # Eventos de voz
     else:
         # Placeholders cuando PyQt6 no está disponible
         gesture_detected = None
@@ -56,6 +258,9 @@ class GesturePipeline(QObject):
         error_occurred = None
         profile_changed = None
         stats_updated = None
+        pipeline_started = None
+        pipeline_stopped = None
+        voice_event = None
     
     def __init__(self, config: Dict = None):
         """
@@ -64,8 +269,11 @@ class GesturePipeline(QObject):
         Args:
             config: Configuración del sistema
         """
+        # Inicializar integración primero
+        GesturePipelineIntegration.__init__(self)
+        
         if QT_AVAILABLE:
-            super().__init__()
+            QObject.__init__(self)
         else:
             QObject.__init__(self)
         
@@ -88,10 +296,14 @@ class GesturePipeline(QObject):
         self.action_executor = None
         self.config_loader = None
         
+        # GestureIntegrator (opcional)
+        self.gesture_integrator = None
+        
         # Colas para comunicación entre hilos
         self.gesture_queue = queue.Queue(maxsize=10)      # Frames para UI
         self.action_queue = queue.Queue()                 # Acciones a ejecutar
         self.voice_queue = queue.Queue(maxsize=5)         # Comandos de voz
+        self.voice_command_queue = queue.Queue(maxsize=10) # Comandos de voz procesados
         
         # Para acceso thread-safe
         self._latest_frame = None
@@ -109,6 +321,7 @@ class GesturePipeline(QObject):
             'actions_successful': 0,
             'actions_failed': 0,
             'voice_commands': 0,
+            'voice_activations': 0,
             'processing_time': 0,
             'detection_time': 0,
             'last_update': time.time(),
@@ -129,10 +342,15 @@ class GesturePipeline(QObject):
         self.camera_thread = None
         self.processing_thread = None
         self.voice_thread = None
+        self.voice_processing_thread = None
         self.stats_thread = None
         
         # Temporizador para estadísticas
         self._stats_timer = None
+        
+        # Cargar perfil por defecto desde configuración
+        default_profile = self.config.get('active_profile', 'gamer')
+        self.load_profile(default_profile)
         
         # Inicializar componentes
         self._init_components()
@@ -141,7 +359,9 @@ class GesturePipeline(QObject):
         self._emit_status("initialized", {"config": self.config})
         
         logger.info("✅ GesturePipeline inicializado para NYX")
-
+    
+    # ========== MÉTODOS DE INICIALIZACIÓN ==========
+    
     def _init_components(self):
         """Inicializa todos los componentes del sistema."""
         components_loaded = []
@@ -196,20 +416,20 @@ class GesturePipeline(QObject):
             except Exception as e:
                 logger.error(f"❌ Error inicializando ArmDetector: {e}")
             
-            # 4. Voice Recognizer
+            # 4. Voice Recognizer (CRÍTICO - Método actualizado)
             try:
                 voice_config = self.config.get('voice_recognition', {})
                 if voice_config.get('enabled', True):
                     from core.voice_recognizer import VoiceRecognizer
-                    self.voice_recognizer = VoiceRecognizer(
-                        activation_word=voice_config.get('activation_word', 'nyx'),
-                        language=voice_config.get('language', 'es-ES'),
-                        energy_threshold=voice_config.get('energy_threshold', 300),
-                        pause_threshold=voice_config.get('pause_threshold', 0.8),
-                        dynamic_energy_threshold=voice_config.get('dynamic_energy_threshold', True)
-                    )
+                    
+                    # Inicializar VoiceRecognizer
+                    self.voice_recognizer = VoiceRecognizer(voice_config)
+                    
+                    # Configurar callbacks CRÍTICOS
+                    self._setup_voice_callbacks()
+                    
                     components_loaded.append("VoiceRecognizer")
-                    logger.info("✅ VoiceRecognizer inicializado")
+                    logger.info("✅ VoiceRecognizer inicializado y callbacks configurados")
                 else:
                     logger.info("❌ VoiceRecognizer deshabilitado en configuración")
             except ImportError as e:
@@ -236,7 +456,293 @@ class GesturePipeline(QObject):
             logger.critical(f"🔥 Error crítico inicializando componentes: {e}")
             self._emit_error("init_error", f"Error inicializando: {str(e)}")
             raise
-
+    
+    def _setup_voice_callbacks(self):
+        """Configura todos los callbacks para VoiceRecognizer."""
+        if not self.voice_recognizer:
+            return
+        
+        try:
+            # Callback para comandos de voz detectados
+            self.voice_recognizer.add_callback('on_command', self._on_voice_command)
+            
+            # Callback para activación por palabra clave
+            self.voice_recognizer.add_callback('on_activation', self._on_voice_activation)
+            
+            # Callback para errores de voz
+            self.voice_recognizer.add_callback('on_error', self._on_voice_error)
+            
+            # Callback para cambios de estado
+            self.voice_recognizer.add_callback('on_state_change', self._on_voice_state_change)
+            
+            # Callback para audio capturado (opcional)
+            self.voice_recognizer.add_callback('on_audio_captured', self._on_voice_audio_captured)
+            
+            logger.debug("✅ Callbacks de voz configurados")
+            
+        except Exception as e:
+            logger.error(f"❌ Error configurando callbacks de voz: {e}")
+    
+    # ========== CALLBACKS DE VOZ ==========
+    
+    def _on_voice_command(self, command: Dict):
+        """Procesa comando de voz detectado."""
+        try:
+            command_text = command.get('text', '').strip()
+            logger.info(f"🎤 Comando de voz detectado: '{command_text}'")
+            
+            # Agregar metadata del perfil si está disponible
+            if self.profile_runtime:
+                command['profile'] = self.profile_runtime.get_profile_name()
+                command['profile_id'] = self.profile_runtime.get_profile_id() if hasattr(self.profile_runtime, 'get_profile_id') else self.current_profile_name
+            
+            # Actualizar estadísticas
+            with self._stats_lock:
+                self.stats['voice_commands'] += 1
+            
+            # Agregar al historial
+            self.voice_history.append(command.copy())
+            if len(self.voice_history) > self.max_history:
+                self.voice_history.pop(0)
+            
+            # Emitir evento
+            if self.voice_event:
+                self.voice_event.emit('command', command)
+            
+            # Encolar para procesamiento
+            self._enqueue_voice_command(command)
+            
+        except Exception as e:
+            logger.error(f"❌ Error en callback de comando de voz: {e}")
+    
+    def _on_voice_activation(self, text: str):
+        """Maneja detección de palabra de activación."""
+        try:
+            logger.info(f"🎤 Activación detectada: '{text}'")
+            
+            # Actualizar estadísticas
+            with self._stats_lock:
+                self.stats['voice_activations'] += 1
+            
+            # Emitir evento
+            if self.voice_event:
+                self.voice_event.emit('activation', {'text': text, 'timestamp': time.time()})
+            
+            self._emit_status("voice_activated", {'text': text})
+            
+        except Exception as e:
+            logger.error(f"❌ Error en callback de activación de voz: {e}")
+    
+    def _on_voice_error(self, error_type: str, message: str):
+        """Maneja errores de voz."""
+        try:
+            logger.error(f"🎤 Error de voz [{error_type}]: {message}")
+            
+            # Emitir evento
+            if self.voice_event:
+                self.voice_event.emit('error', {'type': error_type, 'message': message})
+            
+            self._emit_error('voice_error', f"{error_type}: {message}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error en callback de error de voz: {e}")
+    
+    def _on_voice_state_change(self, old_state: str, new_state: str):
+        """Maneja cambios de estado."""
+        try:
+            logger.info(f"🎤 Estado de voz: {old_state} → {new_state}")
+            
+            # Emitir evento
+            if self.voice_event:
+                self.voice_event.emit('state_change', {
+                    'old': old_state,
+                    'new': new_state,
+                    'timestamp': time.time()
+                })
+            
+            self._emit_status('voice_state', {'old': old_state, 'new': new_state})
+            
+        except Exception as e:
+            logger.error(f"❌ Error en callback de cambio de estado de voz: {e}")
+    
+    def _on_voice_audio_captured(self, command: Dict):
+        """Maneja audio procesado (opcional)."""
+        # Opcional: análisis de audio o logging
+        try:
+            # Puedes agregar procesamiento adicional aquí
+            audio_info = command.get('audio_info', {})
+            duration = audio_info.get('duration', 0)
+            sample_rate = audio_info.get('sample_rate', 0)
+            
+            if duration > 0:
+                logger.debug(f"🎤 Audio capturado: {duration:.2f}s @ {sample_rate}Hz")
+                
+        except Exception as e:
+            logger.debug(f"⚠️ Error en callback de audio: {e}")
+    
+    def _enqueue_voice_command(self, command: Dict):
+        """Encuela comando de voz para procesamiento."""
+        try:
+            self.voice_command_queue.put_nowait(command)
+            logger.debug(f"✅ Comando de voz encolado: {command.get('text', '')[:50]}...")
+            
+        except queue.Full:
+            logger.warning("⚠️ Cola de comandos de voz llena")
+            
+            # Alternativa: procesar inmediatamente
+            self._process_voice_command_immediately(command)
+    
+    def _process_voice_command_immediately(self, command: Dict):
+        """Procesa un comando de voz inmediatamente."""
+        try:
+            # Usar el sistema integrado para procesar el comando
+            action = self.process_voice_command(command)
+            
+            if action and self.action_executor:
+                # Ejecutar acción
+                action_result = self.action_executor.execute(action)
+                
+                # Registrar resultado
+                if action_result:
+                    self.action_history.append({
+                        'voice_command': command,
+                        'action': action,
+                        'action_result': action_result,
+                        'timestamp': time.time()
+                    })
+                    
+                    # Actualizar estadísticas
+                    with self._stats_lock:
+                        self.stats['actions_executed'] += 1
+                        if action_result.get('success', False):
+                            self.stats['actions_successful'] += 1
+                        else:
+                            self.stats['actions_failed'] += 1
+                    
+                    # Emitir señal si se ejecutó
+                    if self.action_executed:
+                        self.action_executed.emit(action, action_result)
+                    
+                    logger.info(f"✅ Comando de voz procesado: {command.get('text', '')}")
+            
+            elif not action:
+                logger.warning(f"⚠️ No se encontró acción para comando: {command.get('text', '')}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error procesando comando de voz inmediatamente: {e}")
+    
+    # ========== MÉTODOS DE INTEGRACIÓN SOBREESCRITOS ==========
+    
+    def _handle_detected_gesture(self, gesture_data: Dict):
+        """Maneja un gesto detectado usando el sistema integrado."""
+        gesture_name = gesture_data.get('gesture')
+        hand_type = gesture_data.get('hand', 'unknown')
+        source = gesture_data.get('source', 'hand')
+        confidence = gesture_data.get('confidence', 0)
+        
+        # 1. Verificar cooldown
+        gesture_key = f"{gesture_name}_{hand_type}_{source}"
+        current_time = time.time()
+        last_time = self.gesture_cooldowns.get(gesture_key, 0)
+        
+        if current_time - last_time < self.min_gesture_interval:
+            return
+        
+        # 2. Actualizar cooldown
+        self.gesture_cooldowns[gesture_key] = current_time
+        
+        # 3. Actualizar estadísticas
+        with self._stats_lock:
+            self.stats['gestures_detected'] += 1
+        
+        # 4. Agregar al historial
+        self.gesture_history.append(gesture_data.copy())
+        if len(self.gesture_history) > self.max_history:
+            self.gesture_history.pop(0)
+        
+        # 5. Emitir señal
+        if self.gesture_detected:
+            self.gesture_detected.emit(gesture_data)
+        
+        # 6. Usar el método integrado para procesar el gesto
+        action = self.process_gesture(gesture_data)
+        
+        if action and self.action_executor:
+            try:
+                # Ejecutar acción
+                action_result = self.action_executor.execute(action)
+                
+                # Registrar en historial de acciones
+                if action_result:
+                    self.action_history.append({
+                        'gesture': gesture_data,
+                        'action': action,
+                        'action_result': action_result,
+                        'timestamp': time.time()
+                    })
+                    
+                    if len(self.action_history) > self.max_history:
+                        self.action_history.pop(0)
+                    
+                    # Actualizar estadísticas
+                    with self._stats_lock:
+                        self.stats['actions_executed'] += 1
+                        if action_result.get('success', False):
+                            self.stats['actions_successful'] += 1
+                        else:
+                            self.stats['actions_failed'] += 1
+                    
+                    # Emitir señal de acción ejecutada
+                    if self.action_executed:
+                        self.action_executed.emit(action, action_result)
+                
+            except Exception as e:
+                logger.error(f"❌ Error ejecutando acción para gesto {gesture_name}: {e}")
+    
+    def _process_voice_command(self, command_data: Dict):
+        """Procesa un comando de voz usando el sistema integrado."""
+        command_text = command_data.get('text', '').lower().strip()
+        
+        if not command_text:
+            return
+        
+        logger.info(f"🎤 Procesando comando de voz: '{command_text}'")
+        
+        # 1. Agregar al historial
+        self.voice_history.append(command_data.copy())
+        if len(self.voice_history) > self.max_history:
+            self.voice_history.pop(0)
+        
+        # 2. Actualizar estadísticas
+        with self._stats_lock:
+            self.stats['voice_commands'] += 1
+        
+        # 3. Usar el método integrado para procesar el comando de voz
+        action = self.process_voice_command(command_data)
+        
+        if action and self.action_executor:
+            try:
+                # Ejecutar acción
+                action_result = self.action_executor.execute(action)
+                
+                # Registrar resultado
+                if action_result:
+                    self.action_history.append({
+                        'voice_command': command_data,
+                        'action': action,
+                        'action_result': action_result,
+                        'timestamp': time.time()
+                    })
+                    
+                    # Emitir señal si se ejecutó
+                    if action_result.get('success', False) and self.action_executed:
+                        self.action_executed.emit(action, action_result)
+                
+            except Exception as e:
+                logger.error(f"❌ Error ejecutando comando de voz: {e}")
+    
+    # ========== MÉTODOS DE GESTIÓN DE PERFILES ==========
+    
     def load_profile(self, profile_name: str) -> bool:
         """
         Carga un perfil de configuración.
@@ -301,7 +807,15 @@ class GesturePipeline(QObject):
                     self._emit_error("connection_error", error_msg)
                     return False
             
-            # 5. Configurar detectores con gestos activos
+            # 5. Cargar perfil en GestureIntegrator si existe
+            if self.gesture_integrator and hasattr(self.gesture_integrator, 'load_profile'):
+                try:
+                    self.gesture_integrator.load_profile(profile_data)
+                    logger.info("✅ Perfil cargado en GestureIntegrator")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error cargando perfil en GestureIntegrator: {e}")
+            
+            # 6. Configurar detectores con gestos activos
             if self.hand_detector and hasattr(self.hand_detector, 'set_active_gestures'):
                 try:
                     active_gestures = self.profile_runtime.get_all_gestures()
@@ -310,8 +824,9 @@ class GesturePipeline(QObject):
                 except Exception as e:
                     logger.warning(f"⚠️ Error configurando gestos en HandDetector: {e}")
             
-            # 6. Configurar voz
+            # 7. Configurar voz con comandos del perfil
             if self.voice_recognizer:
+                # Configurar palabra de activación
                 activation_word = self.config.get('voice_recognition', {}).get('activation_word', 'nyx')
                 if hasattr(self.voice_recognizer, 'set_activation_word'):
                     self.voice_recognizer.set_activation_word(activation_word)
@@ -323,7 +838,7 @@ class GesturePipeline(QObject):
                     self.voice_recognizer.set_voice_commands(voice_commands)
                     logger.info(f"✅ {len(voice_commands)} comandos de voz configurados")
             
-            # 7. Emitir señales
+            # 8. Emitir señales
             profile_info = {
                 'name': profile_name,
                 'gesture_count': self.profile_runtime.get_gesture_count(),
@@ -349,35 +864,9 @@ class GesturePipeline(QObject):
             logger.error(traceback.format_exc())
             self._emit_error("profile_error", error_msg)
             return False
-
-    def set_active_profile(self, profile_name: str) -> bool:
-        """
-        Cambia el perfil activo dinámicamente.
-        
-        Args:
-            profile_name: Nombre del nuevo perfil
-            
-        Returns:
-            True si se cambió correctamente
-        """
-        logger.info(f"🔄 Cambiando perfil a: {profile_name}")
-        
-        # Guardar estado actual
-        was_running = self.is_running
-        
-        # Detener si está corriendo
-        if was_running:
-            self.stop()
-        
-        # Cargar nuevo perfil
-        success = self.load_profile(profile_name)
-        
-        # Reanudar si estaba corriendo
-        if was_running and success:
-            self.start()
-        
-        return success
-
+    
+    # ========== MÉTODOS DE CONTROL DEL PIPELINE ==========
+    
     def start(self) -> bool:
         """
         Inicia el pipeline completo.
@@ -421,14 +910,32 @@ class GesturePipeline(QObject):
                 try:
                     self.voice_recognizer.start()
                     logger.info("✅ VoiceRecognizer iniciado")
+                    
+                    # Iniciar hilo de procesamiento de comandos de voz
+                    self.voice_processing_thread = threading.Thread(
+                        target=self._voice_processing_loop,
+                        daemon=True,
+                        name="NYX-VoiceProcessingThread"
+                    )
+                    self.voice_processing_thread.start()
+                    logger.info("✅ Hilo de procesamiento de voz iniciado")
+                    
                 except Exception as e:
                     logger.error(f"❌ Error iniciando VoiceRecognizer: {e}")
             
-            # 4. Marcar como corriendo
+            # 4. Iniciar GestureIntegrator
+            if self.gesture_integrator and hasattr(self.gesture_integrator, 'start'):
+                try:
+                    self.gesture_integrator.start()
+                    logger.info("✅ GestureIntegrator iniciado")
+                except Exception as e:
+                    logger.error(f"❌ Error iniciando GestureIntegrator: {e}")
+            
+            # 5. Marcar como corriendo
             self.is_running = True
             self._processing_active = True
             
-            # 5. Iniciar hilos
+            # 6. Iniciar hilos
             # Hilo de cámara
             self.camera_thread = threading.Thread(
                 target=self._camera_loop,
@@ -447,28 +954,33 @@ class GesturePipeline(QObject):
             self.processing_thread.start()
             logger.info("✅ Hilo de procesamiento iniciado")
             
-            # Hilo de voz (si está disponible)
-            if self.voice_recognizer:
+            # Hilo de escucha de voz (si está disponible)
+            if self.voice_recognizer and hasattr(self.voice_recognizer, 'listen_in_background'):
                 self.voice_thread = threading.Thread(
-                    target=self._voice_loop,
+                    target=self._voice_listening_loop,
                     daemon=True,
-                    name="NYX-VoiceThread"
+                    name="NYX-VoiceListeningThread"
                 )
                 self.voice_thread.start()
-                logger.info("✅ Hilo de voz iniciado")
+                logger.info("✅ Hilo de escucha de voz iniciado")
             
-            # 6. Iniciar temporizador de estadísticas
+            # 7. Iniciar temporizador de estadísticas
             self._start_stats_timer()
             
-            # 7. Emitir señal de inicio
+            # 8. Emitir señal de inicio
             self._emit_status("started", {
                 'profile': self.current_profile_name,
                 'components': {
                     'camera': self.camera_thread.is_alive() if self.camera_thread else False,
                     'processing': self.processing_thread.is_alive() if self.processing_thread else False,
-                    'voice': self.voice_thread.is_alive() if self.voice_thread else False
+                    'voice_listening': self.voice_thread.is_alive() if self.voice_thread else False,
+                    'voice_processing': self.voice_processing_thread.is_alive() if self.voice_processing_thread else False,
+                    'integrator': self.gesture_integrator is not None
                 }
             })
+            
+            if self.pipeline_started:
+                self.pipeline_started.emit()
             
             logger.info("✅ GesturePipeline iniciado exitosamente")
             return True
@@ -479,7 +991,7 @@ class GesturePipeline(QObject):
             self._emit_error("start_error", str(e))
             self.is_running = False
             return False
-
+    
     def stop(self):
         """Detiene el pipeline de manera controlada."""
         if not self.is_running:
@@ -511,11 +1023,20 @@ class GesturePipeline(QObject):
             except Exception as e:
                 logger.error(f"❌ Error deteniendo ActionExecutor: {e}")
         
-        # 5. Esperar a que terminen los hilos
+        # 5. Detener GestureIntegrator
+        if self.gesture_integrator and hasattr(self.gesture_integrator, 'stop'):
+            try:
+                self.gesture_integrator.stop()
+                logger.info("✅ GestureIntegrator detenido")
+            except Exception as e:
+                logger.error(f"❌ Error deteniendo GestureIntegrator: {e}")
+        
+        # 6. Esperar a que terminen los hilos
         threads = [
             (self.camera_thread, "cámara"),
             (self.processing_thread, "procesamiento"),
-            (self.voice_thread, "voz")
+            (self.voice_thread, "escucha de voz"),
+            (self.voice_processing_thread, "procesamiento de voz")
         ]
         
         for thread, name in threads:
@@ -527,16 +1048,24 @@ class GesturePipeline(QObject):
                 else:
                     logger.info(f"✅ Hilo de {name} detenido")
         
-        # 6. Limpiar colas
+        # 7. Limpiar colas
         self._clear_queues()
         
-        # 7. Emitir señal de detención
+        # 8. Limpiar buffers
+        self.clear_buffers()
+        
+        # 9. Emitir señal de detención
         self._emit_status("stopped", {
             'uptime': time.time() - self.stats['start_time']
         })
         
+        if self.pipeline_stopped:
+            self.pipeline_stopped.emit()
+        
         logger.info("✅ GesturePipeline detenido correctamente")
-
+    
+    # ========== BUCLES DE PROCESAMIENTO ==========
+    
     def _camera_loop(self):
         """Bucle principal de captura de cámara."""
         logger.info("🎥 Iniciando bucle de cámara...")
@@ -628,8 +1157,20 @@ class GesturePipeline(QObject):
             try:
                 start_process = time.time()
                 
-                # Detección
-                processed_data = self._process_frame(frame)
+                # Opción 1: Usar GestureIntegrator si está disponible
+                if self.gesture_integrator and hasattr(self.gesture_integrator, 'process_frame'):
+                    processed_data = self.gesture_integrator.process_frame(frame)
+                    
+                    # Obtener acciones del integrador
+                    actions = self.gesture_integrator.get_actions()
+                    for action in actions:
+                        if self.action_executor:
+                            self.action_executor.execute(action)
+                
+                # Opción 2: Procesamiento tradicional
+                else:
+                    processed_data = self._process_frame(frame)
+                
                 processing_time = time.time() - start_process
                 
                 with self._stats_lock:
@@ -642,21 +1183,21 @@ class GesturePipeline(QObject):
                     self._latest_landmarks = processed_data['landmarks']
                 
                 # Preparar datos para UI
+                safe_frame = processed_data['image'].copy()
+                
                 frame_data = {
                     'type': 'frame',
-                    'image': processed_data['image'],
+                    'image': processed_data['image'].copy(),
                     'gestures': processed_data['gestures'],
                     'landmarks': processed_data['landmarks'],
                     'timestamp': current_time,
                     'processing_time': processing_time,
                     'stats': self._get_current_stats()
                 }
-                
                 # Enviar a la cola para UI
                 try:
                     self.gesture_queue.put_nowait(frame_data)
                 except queue.Full:
-                    # Descartar frame más viejo
                     try:
                         self.gesture_queue.get_nowait()
                         self.gesture_queue.put_nowait(frame_data)
@@ -689,7 +1230,89 @@ class GesturePipeline(QObject):
         cv2.destroyAllWindows()
         
         logger.info("🎥 Bucle de cámara terminado")
-
+    
+    def _voice_listening_loop(self):
+        """Bucle de escucha de voz en segundo plano."""
+        if not self.voice_recognizer or not hasattr(self.voice_recognizer, 'listen_in_background'):
+            return
+        
+        logger.info("🎤 Iniciando bucle de escucha de voz...")
+        
+        while self.is_running and self._processing_active:
+            try:
+                # Usar método de escucha en segundo plano si está disponible
+                if hasattr(self.voice_recognizer, 'listen_in_background'):
+                    self.voice_recognizer.listen_in_background()
+                    break  # El método se ejecuta en su propio hilo
+                else:
+                    # Método tradicional de polling
+                    time.sleep(0.1)
+                    
+            except Exception as e:
+                logger.error(f"❌ Error en bucle de escucha de voz: {e}")
+                time.sleep(1)
+        
+        logger.info("🎤 Bucle de escucha de voz terminado")
+    
+    def _voice_processing_loop(self):
+        """Bucle de procesamiento de comandos de voz en cola."""
+        logger.info("🎤 Iniciando bucle de procesamiento de voz...")
+        
+        while self.is_running and self._processing_active:
+            try:
+                # Procesar comandos de voz de la cola
+                if not self.voice_command_queue.empty():
+                    command = self.voice_command_queue.get(timeout=0.01)
+                    
+                    if command:
+                        # Procesar comando usando el sistema integrado
+                        self._process_voice_command(command)
+                    
+                    self.voice_command_queue.task_done()
+                
+                # Pequeña pausa para no consumir mucho CPU
+                time.sleep(0.001)
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"❌ Error en bucle de procesamiento de voz: {e}")
+                time.sleep(0.1)
+        
+        logger.info("🎤 Bucle de procesamiento de voz terminado")
+    
+    def _processing_loop(self):
+        """Bucle de procesamiento de acciones en cola."""
+        logger.info("🔄 Iniciando bucle de procesamiento...")
+        
+        while self.is_running and self._processing_active:
+            try:
+                # 1. Procesar acciones de la cola
+                if not self.action_queue.empty():
+                    action = self.action_queue.get(timeout=0.01)
+                    
+                    if action and self.action_executor:
+                        # Ejecutar acción
+                        result = self.action_executor.execute(action)
+                        
+                        # Emitir señal
+                        if self.action_executed:
+                            self.action_executed.emit(action, result)
+                    
+                    self.action_queue.task_done()
+                
+                # 2. Pequeña pausa para no consumir mucho CPU
+                time.sleep(0.001)
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"❌ Error en bucle de procesamiento: {e}")
+        
+        logger.info("🔄 Bucle de procesamiento terminado")
+    
+    # ========== MÉTODOS UTILITARIOS ==========
+    
     def _process_frame(self, frame: np.ndarray) -> Dict[str, Any]:
         """
         Procesa un frame individual para detección.
@@ -736,7 +1359,7 @@ class GesturePipeline(QObject):
                                 
                                 gestures.append(gesture_data)
                                 
-                                # Manejar gesto
+                                # Manejar gesto (usará el método integrado)
                                 self._handle_detected_gesture(gesture_data)
                     
                     # Obtener landmarks
@@ -762,7 +1385,7 @@ class GesturePipeline(QObject):
                             
                             gestures.append(gesture_data)
                             
-                            # Manejar gesto
+                            # Manejar gesto (usará el método integrado)
                             self._handle_detected_gesture(gesture_data)
                     
                     # Obtener landmarks de brazos
@@ -782,80 +1405,69 @@ class GesturePipeline(QObject):
             'success': len(gestures) > 0,
             'timestamp': time.time()
         }
-
-    def _handle_detected_gesture(self, gesture_data: Dict):
-        """
-        Maneja un gesto recién detectado.
+    
+    def _process_voice_queue(self):
+        """Procesa comandos de voz en la cola."""
+        try:
+            while not self.voice_queue.empty():
+                command = self.voice_queue.get_nowait()
+                self._process_voice_command(command)
+                self.voice_queue.task_done()
+        except queue.Empty:
+            pass
+    
+    # ========== MÉTODOS DE ESTADÍSTICAS ==========
+    
+    def _start_stats_timer(self):
+        """Inicia el temporizador para actualizar estadísticas."""
+        if QT_AVAILABLE and self.stats_updated:
+            self._stats_timer = QTimer()
+            self._stats_timer.timeout.connect(self._update_stats_display)
+            self._stats_timer.start(1000)  # Actualizar cada segundo
+    
+    def _stop_stats_timer(self):
+        """Detiene el temporizador de estadísticas."""
+        if self._stats_timer:
+            self._stats_timer.stop()
+            self._stats_timer = None
+    
+    def _update_stats_display(self):
+        """Actualiza y emite estadísticas para la UI."""
+        stats = self._get_current_stats()
         
-        Args:
-            gesture_data: Datos del gesto detectado
-        """
-        gesture_name = gesture_data.get('gesture')
-        hand_type = gesture_data.get('hand', 'unknown')
-        source = gesture_data.get('source', 'unknown')
-        confidence = gesture_data.get('confidence', 0)
-        
-        # 1. Verificar cooldown
-        gesture_key = f"{gesture_name}_{hand_type}_{source}"
-        current_time = time.time()
-        last_time = self.gesture_cooldowns.get(gesture_key, 0)
-        
-        if current_time - last_time < self.min_gesture_interval:
-            return
-        
-        # 2. Actualizar cooldown
-        self.gesture_cooldowns[gesture_key] = current_time
-        
-        # 3. Actualizar estadísticas
+        if self.stats_updated:
+            self.stats_updated.emit(stats)
+    
+    def _get_current_stats(self) -> Dict[str, Any]:
+        """Obtiene estadísticas actuales."""
         with self._stats_lock:
-            self.stats['gestures_detected'] += 1
+            stats_copy = self.stats.copy()
+            stats_copy.update({
+                'uptime': time.time() - stats_copy['start_time'],
+                'gesture_history_size': len(self.gesture_history),
+                'action_history_size': len(self.action_history),
+                'voice_history_size': len(self.voice_history),
+                'action_queue_size': self.action_queue.qsize(),
+                'gesture_queue_size': self.gesture_queue.qsize(),
+                'voice_queue_size': self.voice_queue.qsize(),
+                'voice_command_queue_size': self.voice_command_queue.qsize(),
+                'gesture_buffer_size': len(self.get_gesture_buffer()),
+                'voice_buffer_size': len(self.get_voice_buffer()),
+                'action_buffer_size': len(self.get_action_buffer()),
+                'is_running': self.is_running,
+                'camera_active': self._camera_active,
+                'processing_active': self._processing_active,
+                'current_profile': self.current_profile_name,
+                'has_profile_runtime': self.profile_runtime is not None,
+                'has_action_executor': self.action_executor is not None,
+                'has_gesture_integrator': self.gesture_integrator is not None,
+                'has_voice_recognizer': self.voice_recognizer is not None
+            })
         
-        # 4. Agregar al historial
-        self.gesture_history.append(gesture_data.copy())
-        if len(self.gesture_history) > self.max_history:
-            self.gesture_history.pop(0)
-        
-        # 5. Emitir señal
-        if self.gesture_detected:
-            self.gesture_detected.emit(gesture_data)
-        
-        # 6. Ejecutar acción si hay ActionExecutor y ProfileRuntime
-        if self.action_executor and self.profile_runtime:
-            try:
-                # Obtener acción del gesto
-                action_result = self.action_executor.execute_gesture(
-                    gesture_name=gesture_name,
-                    source=source,
-                    hand_type=hand_type,
-                    confidence=confidence
-                )
-                
-                # Registrar en historial de acciones
-                if action_result:
-                    self.action_history.append({
-                        'gesture': gesture_data,
-                        'action_result': action_result,
-                        'timestamp': time.time()
-                    })
-                    
-                    if len(self.action_history) > self.max_history:
-                        self.action_history.pop(0)
-                    
-                    # Actualizar estadísticas
-                    with self._stats_lock:
-                        self.stats['actions_executed'] += 1
-                        if action_result.get('success', False):
-                            self.stats['actions_successful'] += 1
-                        else:
-                            self.stats['actions_failed'] += 1
-                    
-                    # Emitir señal de acción ejecutada
-                    if self.action_executed:
-                        self.action_executed.emit(gesture_data, action_result)
-                
-            except Exception as e:
-                logger.error(f"❌ Error ejecutando acción para gesto {gesture_name}: {e}")
-
+        return stats_copy
+    
+    # ========== MÉTODOS DE VISUALIZACIÓN ==========
+    
     def _draw_frame_info(self, frame: np.ndarray, gestures: List[Dict], 
                         landmarks: List[Dict]) -> np.ndarray:
         """
@@ -903,184 +1515,25 @@ class GesturePipeline(QObject):
                 cv2.putText(frame, gesture_text, (10, y_offset + i * 25), 
                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
         
-        # 4. Estadísticas en esquina inferior
+        # 4. Estado de voz
+        if self.voice_recognizer and hasattr(self.voice_recognizer, 'get_state'):
+            voice_state = self.voice_recognizer.get_state()
+            state_text = f"Voz: {voice_state}"
+            state_color = (0, 200, 0) if voice_state == 'listening' else (200, 200, 200)
+            cv2.putText(frame, state_text, (w - 200, h - 40), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, state_color, 1)
+        
+        # 5. Estadísticas en esquina inferior
         stats_text = f"Gestos: {self.stats['gestures_detected']} | "
-        stats_text += f"Acciones: {self.stats['actions_executed']}"
+        stats_text += f"Acciones: {self.stats['actions_executed']} | "
+        stats_text += f"Voz: {self.stats['voice_commands']}"
         cv2.putText(frame, stats_text, (10, h - 10), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
         
         return frame
-
-    def _voice_loop(self):
-        """Bucle para procesamiento de voz."""
-        if not self.voice_recognizer:
-            return
-        
-        logger.info("🎤 Iniciando bucle de voz...")
-        
-        while self.is_running and self._processing_active:
-            try:
-                # Escuchar comandos
-                command = self.voice_recognizer.listen()
-                
-                if command:
-                    # Procesar comando
-                    self._process_voice_command(command)
-                    
-            except Exception as e:
-                logger.error(f"❌ Error en bucle de voz: {e}")
-                time.sleep(0.1)
-        
-        logger.info("🎤 Bucle de voz terminado")
-
-    def _process_voice_command(self, command_data: Dict):
-        """
-        Procesa un comando de voz.
-        
-        Args:
-            command_data: Datos del comando de voz
-        """
-        command_text = command_data.get('text', '').lower().strip()
-        
-        if not command_text:
-            return
-        
-        logger.info(f"🎤 Comando de voz detectado: '{command_text}'")
-        
-        # 1. Agregar al historial
-        self.voice_history.append(command_data.copy())
-        if len(self.voice_history) > self.max_history:
-            self.voice_history.pop(0)
-        
-        # 2. Actualizar estadísticas
-        with self._stats_lock:
-            self.stats['voice_commands'] += 1
-        
-        # 3. Ejecutar acción si hay ActionExecutor
-        if self.action_executor:
-            try:
-                action_result = self.action_executor.execute_voice(command_text)
-                
-                # Registrar resultado
-                if action_result:
-                    self.action_history.append({
-                        'voice_command': command_data,
-                        'action_result': action_result,
-                        'timestamp': time.time()
-                    })
-                    
-                    # Emitir señal si se ejecutó
-                    if action_result.get('success', False) and self.action_executed:
-                        self.action_executed.emit(command_data, action_result)
-                
-            except Exception as e:
-                logger.error(f"❌ Error ejecutando comando de voz: {e}")
-
-    def _process_voice_queue(self):
-        """Procesa comandos de voz en la cola."""
-        try:
-            while not self.voice_queue.empty():
-                command = self.voice_queue.get_nowait()
-                self._process_voice_command(command)
-                self.voice_queue.task_done()
-        except queue.Empty:
-            pass
-
-    def _processing_loop(self):
-        """Bucle de procesamiento de acciones en cola."""
-        logger.info("🔄 Iniciando bucle de procesamiento...")
-        
-        while self.is_running and self._processing_active:
-            try:
-                # 1. Procesar acciones de la cola
-                if not self.action_queue.empty():
-                    action = self.action_queue.get(timeout=0.01)
-                    
-                    if action and self.action_executor:
-                        # Ejecutar acción
-                        result = self.action_executor.execute(action)
-                        
-                        # Emitir señal
-                        if self.action_executed:
-                            self.action_executed.emit(action, result)
-                    
-                    self.action_queue.task_done()
-                
-                # 2. Pequeña pausa para no consumir mucho CPU
-                time.sleep(0.001)
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"❌ Error en bucle de procesamiento: {e}")
-        
-        logger.info("🔄 Bucle de procesamiento terminado")
-
-    def _start_stats_timer(self):
-        """Inicia el temporizador para actualizar estadísticas."""
-        if QT_AVAILABLE and self.stats_updated:
-            self._stats_timer = QTimer()
-            self._stats_timer.timeout.connect(self._update_stats_display)
-            self._stats_timer.start(1000)  # Actualizar cada segundo
-
-    def _stop_stats_timer(self):
-        """Detiene el temporizador de estadísticas."""
-        if self._stats_timer:
-            self._stats_timer.stop()
-            self._stats_timer = None
-
-    def _update_stats_display(self):
-        """Actualiza y emite estadísticas para la UI."""
-        stats = self._get_current_stats()
-        
-        if self.stats_updated:
-            self.stats_updated.emit(stats)
-
-    def _get_current_stats(self) -> Dict[str, Any]:
-        """Obtiene estadísticas actuales."""
-        with self._stats_lock:
-            stats_copy = self.stats.copy()
-            stats_copy.update({
-                'uptime': time.time() - stats_copy['start_time'],
-                'gesture_history_size': len(self.gesture_history),
-                'action_history_size': len(self.action_history),
-                'voice_history_size': len(self.voice_history),
-                'action_queue_size': self.action_queue.qsize(),
-                'gesture_queue_size': self.gesture_queue.qsize(),
-                'voice_queue_size': self.voice_queue.qsize(),
-                'is_running': self.is_running,
-                'camera_active': self._camera_active,
-                'processing_active': self._processing_active,
-                'current_profile': self.current_profile_name,
-                'has_profile_runtime': self.profile_runtime is not None,
-                'has_action_executor': self.action_executor is not None
-            })
-        
-        return stats_copy
-
-    def _clear_queues(self):
-        """Limpia todas las colas."""
-        for q in [self.gesture_queue, self.action_queue, self.voice_queue]:
-            while not q.empty():
-                try:
-                    q.get_nowait()
-                    q.task_done()
-                except (queue.Empty, queue.Full):
-                    break
-
-    def _emit_status(self, status_type: str, data: Dict = None):
-        """Emite señal de cambio de estado."""
-        if self.status_changed:
-            self.status_changed.emit(status_type, data or {})
-
-    def _emit_error(self, error_type: str, message: str):
-        """Emite señal de error."""
-        if self.error_occurred:
-            self.error_occurred.emit(error_type, message)
-        logger.error(f"🚨 [{error_type}] {message}")
-
-    # ========== MÉTODOS PÚBLICOS PARA UI ==========
-
+    
+    # ========== MÉTODOS PÚBLICOS ==========
+    
     def get_latest_frame(self) -> Optional[Dict]:
         """
         Obtiene el último frame procesado.
@@ -1095,30 +1548,30 @@ class GesturePipeline(QObject):
                 if self._latest_frame is not None:
                     return {
                         'type': 'frame',
-                        'image': self._latest_frame,
-                        'gestures': self._latest_gestures,
+                        'image': self._latest_frame.copy(),
+                        'gestures': list(self._latest_gestures),
                         'landmarks': self._latest_landmarks,
                         'timestamp': time.time(),
                         'stats': self._get_current_stats()
                     }
             return None
-
+    
     def get_stats(self) -> Dict[str, Any]:
         """Obtiene estadísticas del pipeline."""
         return self._get_current_stats()
-
+    
     def get_gesture_history(self, limit: int = 10) -> List[Dict]:
         """Obtiene historial de gestos."""
         return self.gesture_history[-limit:] if self.gesture_history else []
-
+    
     def get_action_history(self, limit: int = 10) -> List[Dict]:
         """Obtiene historial de acciones."""
         return self.action_history[-limit:] if self.action_history else []
-
+    
     def get_voice_history(self, limit: int = 10) -> List[Dict]:
         """Obtiene historial de comandos de voz."""
         return self.voice_history[-limit:] if self.voice_history else []
-
+    
     def update_config(self, new_config: Dict):
         """Actualiza configuración dinámicamente."""
         logger.info("⚙️ Actualizando configuración...")
@@ -1145,6 +1598,14 @@ class GesturePipeline(QObject):
             except:
                 pass
         
+        # Actualizar GestureIntegrator si existe
+        if self.gesture_integrator and hasattr(self.gesture_integrator, 'update_config'):
+            try:
+                self.gesture_integrator.update_config(new_config)
+                logger.info("✅ Configuración actualizada en GestureIntegrator")
+            except Exception as e:
+                logger.error(f"❌ Error actualizando configuración en integrador: {e}")
+        
         # Reiniciar si es necesario
         was_running = self.is_running
         if needs_restart and was_running:
@@ -1153,7 +1614,134 @@ class GesturePipeline(QObject):
         
         self._emit_status("config_updated", new_config)
         logger.info("✅ Configuración actualizada")
-
+    
+    def _clear_queues(self):
+        """Limpia todas las colas."""
+        for q in [self.gesture_queue, self.action_queue, self.voice_queue, self.voice_command_queue]:
+            while not q.empty():
+                try:
+                    q.get_nowait()
+                    q.task_done()
+                except (queue.Empty, queue.Full):
+                    break
+    
+    def _emit_status(self, status_type: str, data: Dict = None):
+        """Emite señal de cambio de estado."""
+        if self.status_changed:
+            self.status_changed.emit(status_type, data or {})
+    
+    def _emit_error(self, error_type: str, message: str):
+        """Emite señal de error."""
+        if self.error_occurred:
+            self.error_occurred.emit(error_type, message)
+        logger.error(f"🚨 [{error_type}] {message}")
+    
+    def set_gesture_integrator(self, integrator):
+        """
+        Establece el GestureIntegrator para el pipeline.
+        
+        Args:
+            integrator: Instancia de GestureIntegrator
+        """
+        try:
+            self.gesture_integrator = integrator
+            
+            # Conectar integrador con pipeline
+            if hasattr(integrator, 'set_pipeline'):
+                integrator.set_pipeline(self)
+            
+            # Conectar con ProfileRuntime si ya está cargado
+            if self.profile_runtime and hasattr(integrator, 'set_profile_runtime'):
+                integrator.set_profile_runtime(self.profile_runtime)
+            
+            # Conectar con ActionExecutor si está disponible
+            if self.action_executor and hasattr(integrator, 'set_action_executor'):
+                integrator.set_action_executor(self.action_executor)
+            
+            # Registrar detectores e interpretadores en el integrador
+            self._register_components_with_integrator()
+            
+            logger.info("✅ GestureIntegrator configurado en pipeline")
+            
+        except Exception as e:
+            logger.error(f"❌ Error configurando GestureIntegrator: {e}")
+    
+    def _register_components_with_integrator(self):
+        """Registra componentes en el GestureIntegrator."""
+        if not self.gesture_integrator:
+            return
+        
+        try:
+            # Registrar detectores
+            if self.hand_detector and hasattr(self.gesture_integrator, 'register_detector'):
+                self.gesture_integrator.register_detector('hand', self.hand_detector)
+                logger.info("✅ HandDetector registrado en GestureIntegrator")
+            
+            if self.arm_detector and hasattr(self.gesture_integrator, 'register_detector'):
+                self.gesture_integrator.register_detector('arm', self.arm_detector)
+                logger.info("✅ ArmDetector registrado en GestureIntegrator")
+            
+            # Registrar interpretadores
+            try:
+                from interpreters.hand_interpreter import HandInterpreter
+                hand_interpreter = HandInterpreter(gesture_threshold=0.7)
+                if hasattr(self.gesture_integrator, 'register_interpreter'):
+                    self.gesture_integrator.register_interpreter('hand', hand_interpreter)
+                    logger.info("✅ HandInterpreter registrado en GestureIntegrator")
+            except ImportError:
+                logger.warning("⚠️ No se pudo importar HandInterpreter")
+            
+            try:
+                from interpreters.arm_interpreter import ArmInterpreter
+                arm_interpreter = ArmInterpreter(gesture_threshold=0.6)
+                if hasattr(self.gesture_integrator, 'register_interpreter'):
+                    self.gesture_integrator.register_interpreter('arm', arm_interpreter)
+                    logger.info("✅ ArmInterpreter registrado en GestureIntegrator")
+            except ImportError:
+                logger.warning("⚠️ No se pudo importar ArmInterpreter")
+            
+            try:
+                from interpreters.voice_interpreter import VoiceInterpreter
+                voice_interpreter = VoiceInterpreter(
+                    language=self.config.get('voice_recognition', {}).get('language', 'es-ES')
+                )
+                if hasattr(self.gesture_integrator, 'register_interpreter'):
+                    self.gesture_integrator.register_interpreter('voice', voice_interpreter)
+                    logger.info("✅ VoiceInterpreter registrado en GestureIntegrator")
+            except ImportError:
+                logger.warning("⚠️ No se pudo importar VoiceInterpreter")
+            
+        except Exception as e:
+            logger.error(f"❌ Error registrando componentes en integrador: {e}")
+    
+    def set_active_profile(self, profile_name: str) -> bool:
+        """
+        Cambia el perfil activo dinámicamente.
+        
+        Args:
+            profile_name: Nombre del nuevo perfil
+            
+        Returns:
+            True si se cambió correctamente
+        """
+        logger.info(f"🔄 Cambiando perfil a: {profile_name}")
+        
+        # Guardar estado actual
+        was_running = self.is_running
+        
+        # Detener si está corriendo
+        if was_running:
+            self.stop()
+        
+        # Cargar nuevo perfil
+        success = self.load_profile(profile_name)
+        
+        # Reanudar si estaba corriendo
+        if was_running and success:
+            self.start()
+        
+        return success
+    
     def _init_detectors(self):
         """Reinicializa detectores."""
         # Hand Detector
@@ -1179,7 +1767,7 @@ class GesturePipeline(QObject):
                     self.hand_detector.set_active_gestures(active_gestures)
         except Exception as e:
             logger.error(f"❌ Error reinicializando HandDetector: {e}")
-
+    
     def get_component_status(self) -> Dict[str, Any]:
         """Obtiene estado de todos los componentes."""
         return {
@@ -1189,12 +1777,13 @@ class GesturePipeline(QObject):
             'action_executor': self.action_executor is not None,
             'config_loader': self.config_loader is not None,
             'profile_runtime': self.profile_runtime is not None,
+            'gesture_integrator': self.gesture_integrator is not None,
             'current_profile': self.current_profile_name,
             'is_running': self.is_running,
             'camera_active': self._camera_active,
             'processing_active': self._processing_active
         }
-
+    
     def execute_test_action(self, action_type: str, command: str) -> Dict[str, Any]:
         """
         Ejecuta una acción de prueba (para debugging).
@@ -1218,7 +1807,34 @@ class GesturePipeline(QObject):
         }
         
         return self.action_executor.execute(test_action)
-
+    
+    def reconfigure(self, changes: Dict[str, Any]):
+        """
+        Reconfigura el pipeline con nuevos ajustes.
+        Alias para update_config para compatibilidad con MainWindow.
+        """
+        logger.info(f"⚙️ Reconfigurando pipeline: {list(changes.keys())}")
+        self.update_config(changes)
+    
+    def reconfigure_detectors(self, detector_changes: Dict[str, Any]):
+        """Reconfigura detectores específicos."""
+        self.update_config({'hand_detection': detector_changes.get('hand', {}),
+                           'arm_detection': detector_changes.get('arm', {})})
+    
+    def reconfigure_controllers(self, controller_changes: Dict[str, Any]):
+        """Reconfigura controladores específicos."""
+        if 'controllers' not in self.config:
+            self.config['controllers'] = {}
+        
+        for controller_type, changes in controller_changes.items():
+            if controller_type not in self.config['controllers']:
+                self.config['controllers'][controller_type] = {}
+            self.config['controllers'][controller_type].update(changes)
+    
+    def is_camera_active(self) -> bool:
+        """Verifica si la cámara está activa."""
+        return self._camera_active
+    
     def cleanup(self):
         """Limpia todos los recursos."""
         logger.info("🧹 Limpiando GesturePipeline...")
@@ -1239,6 +1855,13 @@ class GesturePipeline(QObject):
             except:
                 pass
         
+        # Limpiar GestureIntegrator
+        if self.gesture_integrator and hasattr(self.gesture_integrator, 'cleanup'):
+            try:
+                self.gesture_integrator.cleanup()
+            except:
+                pass
+        
         # Limpiar controladores
         if self.action_executor and hasattr(self.action_executor, 'cleanup'):
             try:
@@ -1246,8 +1869,16 @@ class GesturePipeline(QObject):
             except:
                 pass
         
+        # Limpiar VoiceRecognizer
+        if self.voice_recognizer and hasattr(self.voice_recognizer, 'cleanup'):
+            try:
+                self.voice_recognizer.cleanup()
+            except:
+                pass
+        
         # Limpiar datos
         self._clear_queues()
+        self.clear_buffers()
         
         with self._frame_lock:
             self._latest_frame = None
@@ -1287,7 +1918,12 @@ if __name__ == "__main__":
             'min_tracking_confidence': 0.5
         },
         'voice_recognition': {
-            'enabled': False  # Desactivado para prueba
+            'enabled': True,
+            'activation_word': 'nyx',
+            'language': 'es-ES',
+            'energy_threshold': 300,
+            'pause_threshold': 0.8,
+            'dynamic_energy_threshold': True
         }
     }
     
@@ -1305,19 +1941,36 @@ if __name__ == "__main__":
         print(f"📊 Estado componentes: {status}")
         
         # Iniciar pipeline
-        print("▶️ Iniciando pipeline (5 segundos)...")
+        print("▶️ Iniciando pipeline (10 segundos)...")
         pipeline.start()
         
         # Esperar un poco
         import time
-        time.sleep(5)
+        time.sleep(10)
         
         # Obtener estadísticas
         stats = pipeline.get_stats()
-        print(f"\n📊 Estadísticas después de 5 segundos:")
+        print(f"\n📊 Estadísticas después de 10 segundos:")
         print(f"  FPS: {stats['fps']}")
         print(f"  Frames procesados: {stats['frame_count']}")
         print(f"  Gestos detectados: {stats['gestures_detected']}")
+        print(f"  Comandos de voz: {stats['voice_commands']}")
+        print(f"  Activaciones de voz: {stats['voice_activations']}")
+        
+        # Obtener buffers de integración
+        gesture_buffer = pipeline.get_gesture_buffer()
+        voice_buffer = pipeline.get_voice_buffer()
+        action_buffer = pipeline.get_action_buffer()
+        print(f"  Buffer de gestos: {len(gesture_buffer)}")
+        print(f"  Buffer de voz: {len(voice_buffer)}")
+        print(f"  Buffer de acciones: {len(action_buffer)}")
+        
+        # Obtener historial de voz
+        voice_history = pipeline.get_voice_history(5)
+        if voice_history:
+            print(f"\n🎤 Últimos {len(voice_history)} comandos de voz:")
+            for i, cmd in enumerate(voice_history):
+                print(f"  {i+1}. {cmd.get('text', 'Sin texto')}")
         
         # Detener
         print("\n⏹️ Deteniendo pipeline...")
@@ -1328,157 +1981,3 @@ if __name__ == "__main__":
         print("✅ Prueba completada")
     else:
         print("❌ Error cargando perfil")
-
-
-# En gesture_pipeline.py, después de la clase GesturePipeline, agregar:
-
-"""
-# Importar el nuevo integrador
-from .gesture_integrator import GestureIntegrator
-
-# Modificar el método __init__ de GesturePipeline para incluir:
-class GesturePipeline:
-    def __init__(self, config):
-        # ... código existente ...
-        
-        # Inicializar integrador de gestos
-        self.gesture_integrator = GestureIntegrator(config)
-        
-        # Conectar integrador con pipeline
-        self.gesture_integrator.set_pipeline(self)
-        
-        # ... resto del código ...
-    
-    def start(self):
-        Inicia el pipeline y todos sus componentes
-        # ... código existente ...
-        
-        # Iniciar integrador
-        if hasattr(self, 'gesture_integrator'):
-            self.gesture_integrator.start()
-        
-        # ... resto del código ...
-    
-    def stop(self):
-        Detiene el pipeline y todos sus componentes
-        # ... código existente ...
-        
-        # Detener integrador
-        if hasattr(self, 'gesture_integrator') and self.gesture_integrator.running:
-            self.gesture_integrator.stop()
-        
-        # ... resto del código ...
-    
-    def register_detector(self, name: str, detector):
-        Registra un detector en el pipeline
-        if hasattr(self, 'gesture_integrator'):
-            self.gesture_integrator.register_detector(name, detector)
-        else:
-            logger.warning("❌ GestureIntegrator no inicializado")
-    
-    def register_interpreter(self, name: str, interpreter):
-        Registra un intérprete en el pipeline.
-        if hasattr(self, 'gesture_integrator'):
-            self.gesture_integrator.register_interpreter(name, interpreter)
-        else:
-            logger.warning("❌ GestureIntegrator no inicializado")
-    
-    def process_frame(self, frame):
-        
-        Procesa un frame a través del pipeline.
-        
-        Args:
-            frame: Frame de imagen a procesar
-        # ... procesamiento existente ...
-        
-        # También enviar al integrador
-        if hasattr(self, 'gesture_integrator') and self.gesture_integrator.running:
-            frame_data = {
-                'frame_id': self.frame_count,
-                'timestamp': time.time()
-            }
-            self.gesture_integrator.process_frame(frame, frame_data)
-        
-        # ... resto del código ...
-    
-    def load_profile(self, profile_data: Dict):
-        # ... código existente para profile_runtime ...
-        
-        # También cargar en el integrador
-        if hasattr(self, 'gesture_integrator'):
-            self.gesture_integrator.load_profile(profile_data)
-        
-        # ... resto del código ...
-    
-    def get_actions(self):
-       Obtiene acciones pendientes del integrador.
-        if hasattr(self, 'gesture_integrator'):
-            return self.gesture_integrator.get_actions()
-        return []        
-"""
-
-"""
-Usar geture integrador???
-# 1. Crear instancia
-integrator = GestureIntegrator(config)
-
-# 2. Registrar componentes
-integrator.register_detector('arm', arm_detector)
-integrator.register_detector('hand', hand_detector)
-integrator.register_interpreter('arm', arm_interpreter)
-integrator.register_interpreter('hand', hand_interpreter)
-
-# 3. Conectar con otros componentes
-integrator.set_profile_runtime(profile_runtime)
-integrator.set_action_executor(action_executor)  # Opcional
-integrator.set_pipeline(pipeline)  # Opcional
-
-# 4. Cargar perfil
-integrator.load_profile(profile_data)
-
-# 5. Iniciar
-integrator.start()
-
-# 6. Usar
-integrator.process_frame(frame)  # Para detectores de imagen
-# O
-integrator.process_detection('voice', voice_data)  # Para voz
-
-# 7. Obtener acciones para ejecutar
-actions = integrator.get_actions()
-
-# 8. Monitorear
-stats = integrator.get_stats()
-history = integrator.get_gesture_history()
-
-# 9. Detener
-integrator.stop()
-"""
-
-
-"""
-del main
-# Al inicio del archivo:
-from .gesture_integrator import GestureIntegrator
-
-# En la clase GesturePipeline.__init__:
-def __init__(self, config):
-    # ... código existente ...
-    
-    # Inicializar GestureIntegrator
-    self.gesture_integrator = None  # Se asignará desde main.py
-    
-    # Conectar con otros componentes
-    if hasattr(self, 'action_executor'):
-        self.action_executor.set_logger(self.logger)
-    
-    # ... resto del código ...
-
-# Agregar método para recibir el integrador
-def set_gesture_integrator(self, integrator):
-    self.gesture_integrator = integrator
-    integrator.set_pipeline(self)
-    integrator.set_profile_runtime(self.profile_runtime)
-    if hasattr(self, 'action_executor'):
-        integrator.set_action_executor(self.action_executor)
-"""

@@ -3,16 +3,18 @@
 ==================================================
 Controlador central que ejecuta acciones basadas en gestos o comandos de voz.
 Integra todos los controladores específicos (teclado, mouse, bash, ventanas).
+Versión consolidada e integrada.
 """
 
 import threading
 import queue
 import time
 import logging
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Union
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
 
 class ActionExecutor:
     """Ejecutor central de acciones para NYX."""
@@ -36,13 +38,13 @@ class ActionExecutor:
         self.current_profile = None
         self.profile_name = None
         
-        # Controladores específicos (CORRECCIÓN IMPORTANTE)
+        # Controladores específicos
         self.controllers = {}
         self._init_controllers()
         
         # Historial para NYX UI
-        self.history = []
-        self.max_history = 50
+        self.action_history = []  # Usando nombre unificado
+        self.max_history = 100
         
         # Estadísticas para monitoreo
         self.stats = {
@@ -60,7 +62,8 @@ class ActionExecutor:
             'on_action_start': [],
             'on_action_complete': [],
             'on_action_error': [],
-            'on_profile_changed': []
+            'on_profile_changed': [],
+            'on_controller_initialized': []  # Nuevo callback
         }
         
         logger.info("✅ ActionExecutor inicializado para NYX")
@@ -68,49 +71,59 @@ class ActionExecutor:
     def _init_controllers(self):
         """Inicializa todos los controladores específicos."""
         try:
-            # 🎮 Teclado - Usa KeyboardController específico
-            try:
-                from .keyboard_controller import KeyboardController
-                self.controllers['keyboard'] = KeyboardController(self.config)
-                logger.debug("✅ KeyboardController cargado")
-            except ImportError as e:
-                logger.error(f"❌ No se pudo cargar KeyboardController: {e}")
-                self.controllers['keyboard'] = None
+            # Cargar controladores según configuración
+            controller_configs = self.config.get('controllers', {})
             
-            # 🖱️ Mouse - Usa MouseController específico
-            try:
-                from .mouse_controller import MouseController
-                self.controllers['mouse'] = MouseController(self.config)
-                logger.debug("✅ MouseController cargado")
-            except ImportError as e:
-                logger.error(f"❌ No se pudo cargar MouseController: {e}")
-                self.controllers['mouse'] = None
+            # 🎮 Teclado
+            if controller_configs.get('keyboard', {}).get('enabled', True):
+                try:
+                    from .keyboard_controller import KeyboardController
+                    self.controllers['keyboard'] = KeyboardController()
+                    logger.info("✅ KeyboardController inicializado")
+                    self._run_callbacks('on_controller_initialized', 'keyboard')
+                except ImportError as e:
+                    logger.error(f"❌ No se pudo cargar KeyboardController: {e}")
+                    self.controllers['keyboard'] = None
             
-            # 💻 Bash - Usa BashController específico
-            try:
-                from .bash_controller import BashController
-                self.controllers['bash'] = BashController(self.config)
-                logger.debug("✅ BashController cargado")
-            except ImportError as e:
-                logger.error(f"❌ No se pudo cargar BashController: {e}")
-                self.controllers['bash'] = None
+            # 🖱️ Mouse
+            if controller_configs.get('mouse', {}).get('enabled', True):
+                try:
+                    from .mouse_controller import MouseController
+                    mouse_sensitivity = controller_configs.get('mouse', {}).get('sensitivity', 1.0)
+                    self.controllers['mouse'] = MouseController(sensitivity=mouse_sensitivity)
+                    logger.info("✅ MouseController inicializado")
+                    self._run_callbacks('on_controller_initialized', 'mouse')
+                except ImportError as e:
+                    logger.error(f"❌ No se pudo cargar MouseController: {e}")
+                    self.controllers['mouse'] = None
             
-            # 🪟 Ventanas - Usa WindowController específico
-            try:
-                from .window_controller import WindowController
-                self.controllers['window'] = WindowController(self.config)
-                logger.debug("✅ WindowController cargado")
-            except ImportError as e:
-                logger.error(f"❌ No se pudo cargar WindowController: {e}")
-                self.controllers['window'] = None
+            # 🪟 Ventanas
+            if controller_configs.get('window', {}).get('enabled', True):
+                try:
+                    from .window_controller import WindowController
+                    self.controllers['window'] = WindowController()
+                    logger.info("✅ WindowController inicializado")
+                    self._run_callbacks('on_controller_initialized', 'window')
+                except ImportError as e:
+                    logger.error(f"❌ No se pudo cargar WindowController: {e}")
+                    self.controllers['window'] = None
             
-            # Combinaciones (especial)
+            # 💻 Bash
+            if controller_configs.get('bash', {}).get('enabled', False):
+                try:
+                    from .bash_controller import BashController
+                    self.controllers['bash'] = BashController()
+                    logger.info("✅ BashController inicializado")
+                    self._run_callbacks('on_controller_initialized', 'bash')
+                except ImportError as e:
+                    logger.error(f"❌ No se pudo cargar BashController: {e}")
+                    self.controllers['bash'] = None
+            
+            # Controladores especiales
             self.controllers['combination'] = None  # Se maneja internamente
-            
-            # Personalizado
             self.controllers['custom'] = None  # Para callbacks
             
-            logger.info(f"🎮 Controladores inicializados: {list(self.controllers.keys())}")
+            logger.info(f"🎮 Controladores inicializados: {[k for k, v in self.controllers.items() if v is not None]}")
             
         except Exception as e:
             logger.error(f"❌ Error crítico inicializando controladores: {e}")
@@ -136,12 +149,24 @@ class ActionExecutor:
             self._run_callbacks('on_profile_changed', {
                 'profile_name': self.profile_name,
                 'gesture_count': profile_runtime.get_gesture_count(),
-                'voice_count': profile_runtime.get_voice_command_count()
+                'voice_count': profile_runtime.get_voice_command_count() if hasattr(profile_runtime, 'get_voice_command_count') else 0
             })
         else:
             logger.warning("⚠️ ProfileRuntime configurado como None")
             self.current_profile = None
             self.profile_name = None
+
+    def register_controller(self, name: str, controller):
+        """
+        Registra un controlador adicional.
+        
+        Args:
+            name: Nombre del controlador
+            controller: Instancia del controlador
+        """
+        self.controllers[name] = controller
+        logger.info(f"✅ Controlador '{name}' registrado")
+        self._run_callbacks('on_controller_initialized', name)
 
     def get_action_for_gesture(self, gesture_name: str, source: str = 'hand', 
                                hand_type: str = 'right') -> Optional[Dict]:
@@ -150,7 +175,7 @@ class ActionExecutor:
         
         Args:
             gesture_name: Nombre del gesto
-            source: Fuente (hand/arm)
+            source: Fuente (hand/arm/voice)
             hand_type: Tipo de mano (right/left)
             
         Returns:
@@ -161,8 +186,14 @@ class ActionExecutor:
             return None
         
         try:
-            # Buscar en gestos del perfil
-            gesture_data = self.profile_runtime.get_gesture(gesture_name)
+            # Intentar con nuevo método si existe
+            if hasattr(self.profile_runtime, 'get_gesture'):
+                gesture_data = self.profile_runtime.get_gesture(gesture_name, source)
+            else:
+                # Método de respaldo
+                gestures = self.profile_runtime.gestures if hasattr(self.profile_runtime, 'gestures') else {}
+                gesture_data = gestures.get(gesture_name, {})
+            
             if not gesture_data:
                 logger.debug(f"❌ Gesto no encontrado: {gesture_name}")
                 return None
@@ -190,6 +221,7 @@ class ActionExecutor:
             action = {
                 'type': gesture_data.get('action', 'unknown'),
                 'command': gesture_data.get('command', ''),
+                'params': gesture_data.get('params', {}),
                 'description': gesture_data.get('description', f"Gesto: {gesture_name}"),
                 'gesture_name': gesture_name,
                 'source': source,
@@ -219,8 +251,20 @@ class ActionExecutor:
             return None
         
         try:
-            # Buscar en comandos de voz del perfil
-            voice_data = self.profile_runtime.get_voice_command(command_text)
+            # Intentar con nuevo método si existe
+            if hasattr(self.profile_runtime, 'get_voice_command'):
+                voice_data = self.profile_runtime.get_voice_command(command_text)
+            else:
+                # Buscar coincidencias parciales (compatibilidad con segunda versión)
+                voice_commands = self.profile_runtime.get_voice_commands() if hasattr(self.profile_runtime, 'get_voice_commands') else {}
+                voice_data = voice_commands.get(command_text)
+                
+                if not voice_data:
+                    for cmd, config in voice_commands.items():
+                        if cmd in command_text:
+                            voice_data = config
+                            break
+            
             if not voice_data:
                 logger.debug(f"❌ Comando de voz no encontrado: {command_text}")
                 return None
@@ -234,6 +278,7 @@ class ActionExecutor:
             action = {
                 'type': voice_data.get('action', 'unknown'),
                 'command': voice_data.get('command', ''),
+                'params': voice_data.get('params', {}),
                 'description': voice_data.get('description', f"Voz: {command_text}"),
                 'voice_command': command_text,
                 'profile': self.profile_name
@@ -259,7 +304,7 @@ class ActionExecutor:
         Returns:
             Resultado de la ejecución
         """
-        logger.info(f"👋 Gestos detectado: {gesture_name} ({source}, {hand_type}, conf: {confidence:.2f})")
+        logger.info(f"👋 Gesto detectado: {gesture_name} ({source}, {hand_type}, conf: {confidence:.2f})")
         
         # Obtener acción del perfil
         action_cfg = self.get_action_for_gesture(gesture_name, source, hand_type)
@@ -281,7 +326,24 @@ class ActionExecutor:
         })
         
         # Ejecutar
-        return self.execute(action_cfg)
+        result = self.execute(action_cfg)
+        
+        # Registrar en historial (compatibilidad)
+        history_entry = {
+            'gesture_name': gesture_name,
+            'source': source,
+            'hand_type': hand_type,
+            'confidence': confidence,
+            'action': action_cfg,
+            'result': result,
+            'timestamp': time.time()
+        }
+        
+        self.action_history.append(history_entry)
+        if len(self.action_history) > self.max_history:
+            self.action_history.pop(0)
+        
+        return result
 
     def execute_voice(self, command_text: str) -> Dict[str, Any]:
         """
@@ -312,7 +374,21 @@ class ActionExecutor:
         })
         
         # Ejecutar
-        return self.execute(action_cfg)
+        result = self.execute(action_cfg)
+        
+        # Registrar en historial (compatibilidad)
+        history_entry = {
+            'command_text': command_text,
+            'action': action_cfg,
+            'result': result,
+            'timestamp': time.time()
+        }
+        
+        self.action_history.append(history_entry)
+        if len(self.action_history) > self.max_history:
+            self.action_history.pop(0)
+        
+        return result
 
     def execute(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -329,6 +405,9 @@ class ActionExecutor:
                 success=False,
                 error="Acción inválida o sin tipo"
             )
+        
+        if not self.is_running:
+            return {'success': False, 'error': 'ActionExecutor no iniciado'}
         
         # Generar ID único
         action_id = f"act_{int(time.time() * 1000)}_{self.stats['total_executed']}"
@@ -361,6 +440,17 @@ class ActionExecutor:
             return
         
         self.is_running = True
+        
+        # Iniciar controladores
+        for name, controller in self.controllers.items():
+            if controller and hasattr(controller, 'start'):
+                try:
+                    controller.start()
+                    logger.debug(f"▶️ Controlador {name} iniciado")
+                except Exception as e:
+                    logger.error(f"❌ Error iniciando controlador {name}: {e}")
+        
+        # Iniciar worker thread
         self.worker_thread = threading.Thread(
             target=self._processing_loop,
             daemon=True,
@@ -377,8 +467,18 @@ class ActionExecutor:
         
         self.is_running = False
         
+        # Detener worker thread
         if self.worker_thread and self.worker_thread.is_alive():
             self.worker_thread.join(timeout=2)
+        
+        # Detener controladores
+        for name, controller in self.controllers.items():
+            if controller and hasattr(controller, 'stop'):
+                try:
+                    controller.stop()
+                    logger.debug(f"⏹️ Controlador {name} detenido")
+                except Exception as e:
+                    logger.error(f"❌ Error deteniendo controlador {name}: {e}")
         
         logger.info("⏹️ ActionExecutor detenido")
 
@@ -420,6 +520,8 @@ class ActionExecutor:
         """
         action_id = action.get('id', 'unknown')
         action_type = action.get('type', 'unknown')
+        command = action.get('command', '')
+        params = action.get('params', {})
         action_desc = action.get('description', f'Acción {action_type}')
         
         logger.info(f"🎯 Ejecutando acción [{action_id}]: {action_desc}")
@@ -437,36 +539,44 @@ class ActionExecutor:
             return self._format_result(success=False, error=error_msg, action=action)
         
         try:
-            # DELEGAR AL CONTROLADOR ESPECÍFICO (CORRECCIÓN CLAVE)
-            if action_type == 'keyboard':
-                result = controller.execute(action)
-            elif action_type == 'mouse':
-                result = controller.execute(action)
-            elif action_type == 'bash':
-                result = controller.execute(action)
-            elif action_type == 'window':
-                result = controller.execute(action)
+            # DELEGAR AL CONTROLADOR ESPECÍFICO
+            if action_type in ['keyboard', 'mouse', 'bash', 'window']:
+                if hasattr(controller, 'execute'):
+                    # Usar método execute unificado
+                    result = controller.execute(command, params)
+                else:
+                    # Métodos específicos para compatibilidad
+                    result = self._execute_compat_mode(action_type, controller, command, params)
+            
             elif action_type == 'combination':
                 result = self._execute_combination(action)
+            
             elif action_type == 'custom':
                 result = self._execute_custom(action)
+            
             else:
                 error_msg = f"Tipo de acción no soportado: {action_type}"
                 return self._format_result(success=False, error=error_msg, action=action)
             
-            # Actualizar estadísticas
-            self._update_stats(result.get('success', False), action_type)
+            # Formatear resultado
+            formatted_result = self._format_result(
+                success=result.get('success', False),
+                output=result.get('output', ''),
+                error=result.get('error', ''),
+                action=action,
+                details=result
+            )
             
-            # Guardar en historial
-            self._add_to_history(action, result)
+            # Actualizar estadísticas
+            self._update_stats(formatted_result.get('success', False), action_type)
             
             # Notificar resultado
-            if result.get('success', False):
-                self._run_callbacks('on_action_complete', action, result)
+            if formatted_result.get('success', False):
+                self._run_callbacks('on_action_complete', action, formatted_result)
             else:
-                self._run_callbacks('on_action_error', action, result)
+                self._run_callbacks('on_action_error', action, formatted_result)
             
-            return result
+            return formatted_result
             
         except Exception as e:
             error_msg = f"Error ejecutando acción {action_type}: {str(e)}"
@@ -474,6 +584,40 @@ class ActionExecutor:
             error_result = self._format_result(success=False, error=error_msg, action=action)
             self._run_callbacks('on_action_error', action, error_result)
             return error_result
+
+    def _execute_compat_mode(self, action_type: str, controller, command: str, params: Dict) -> Dict[str, Any]:
+        """Ejecuta en modo compatibilidad con controladores más simples."""
+        try:
+            if action_type == 'keyboard' and hasattr(controller, 'press_key'):
+                result = controller.press_key(command)
+                return {'success': True, 'output': f'Tecla {command} presionada'}
+            
+            elif action_type == 'mouse':
+                if command == 'move' and hasattr(controller, 'move'):
+                    result = controller.move(params.get('x', 0), params.get('y', 0))
+                    return {'success': True, 'output': f'Mouse movido a ({params.get("x")}, {params.get("y")})'}
+                elif command == 'click' and hasattr(controller, 'click'):
+                    result = controller.click(params.get('button', 'left'))
+                    return {'success': True, 'output': f'Click {params.get("button")}'}
+                else:
+                    return {'success': False, 'error': f'Comando mouse no soportado: {command}'}
+            
+            elif action_type == 'window' and hasattr(controller, 'switch_window'):
+                if command == 'switch':
+                    result = controller.switch_window()
+                    return {'success': True, 'output': 'Ventana cambiada'}
+                else:
+                    return {'success': False, 'error': f'Comando ventana no soportado: {command}'}
+            
+            elif action_type == 'bash' and hasattr(controller, 'run_command'):
+                result = controller.run_command(command)
+                return {'success': True, 'output': f'Comando bash ejecutado: {command}'}
+            
+            else:
+                return {'success': False, 'error': f'Controlador no soporta comando: {command}'}
+                
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
 
     def _execute_combination(self, action: Dict) -> Dict[str, Any]:
         """Ejecuta combinación de acciones."""
@@ -501,7 +645,7 @@ class ActionExecutor:
         """Ejecuta acción personalizada (callback)."""
         callback = action.get('callback')
         if not callable(callback):
-            return self._format_result(success=False, error="Callback no válido")
+            return {'success': False, 'error': "Callback no válido"}
         
         try:
             args = action.get('args', [])
@@ -509,13 +653,13 @@ class ActionExecutor:
             
             result = callback(*args, **kwargs)
             
-            return self._format_result(
-                success=True,
-                output="Callback ejecutado exitosamente",
-                result=result
-            )
+            return {
+                'success': True,
+                'output': "Callback ejecutado exitosamente",
+                'result': result
+            }
         except Exception as e:
-            return self._format_result(success=False, error=str(e))
+            return {'success': False, 'error': str(e)}
 
     def _format_result(self, success: bool, output: str = '', error: str = '', 
                       action: Dict = None, **kwargs) -> Dict[str, Any]:
@@ -531,6 +675,7 @@ class ActionExecutor:
             result.update({
                 'action_id': action.get('id'),
                 'action_type': action.get('type'),
+                'command': action.get('command', ''),
                 'description': action.get('description', ''),
                 'profile': action.get('profile', self.profile_name)
             })
@@ -552,18 +697,7 @@ class ActionExecutor:
             self.stats['voice_commands'] += 1
         
         self.stats['last_execution'] = datetime.now().isoformat()
-
-    def _add_to_history(self, action: Dict, result: Dict):
-        """Añade acción al historial."""
-        entry = {
-            'action': action.copy(),
-            'result': result.copy(),
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        self.history.append(entry)
-        if len(self.history) > self.max_history:
-            self.history.pop(0)
+        self.stats['queue_size'] = self.action_queue.qsize()
 
     def _run_callbacks(self, callback_type: str, *args):
         """Ejecuta callbacks."""
@@ -577,6 +711,17 @@ class ActionExecutor:
         """Agrega callback."""
         if callback_type in self.callbacks:
             self.callbacks[callback_type].append(callback)
+            logger.debug(f"✅ Callback '{callback_type}' registrado")
+
+    # ===== MÉTODOS COMPATIBILIDAD =====
+    
+    def get_action_history(self, limit: int = 10) -> List[Dict]:
+        """Obtiene historial de acciones (compatibilidad)."""
+        return self.action_history[-limit:] if self.action_history else []
+
+    def get_recent_actions(self, limit: int = 10) -> List[Dict]:
+        """Obtiene acciones recientes para UI (alias para compatibilidad)."""
+        return self.get_action_history(limit)
 
     def get_status(self) -> Dict[str, Any]:
         """Obtiene estado actual para NYX UI."""
@@ -585,16 +730,19 @@ class ActionExecutor:
             'profile': self.profile_name,
             'stats': self.stats.copy(),
             'queue_size': self.action_queue.qsize(),
-            'history_size': len(self.history),
+            'history_size': len(self.action_history),
             'controllers': {
-                name: (ctrl is not None) 
+                name: {
+                    'available': ctrl is not None,
+                    'has_methods': {
+                        'execute': hasattr(ctrl, 'execute') if ctrl else False,
+                        'start': hasattr(ctrl, 'start') if ctrl else False,
+                        'stop': hasattr(ctrl, 'stop') if ctrl else False
+                    }
+                }
                 for name, ctrl in self.controllers.items()
             }
         }
-
-    def get_recent_actions(self, limit: int = 10) -> List[Dict]:
-        """Obtiene acciones recientes para UI."""
-        return self.history[-limit:] if self.history else []
 
     def cleanup(self):
         """Limpia recursos."""
@@ -603,12 +751,27 @@ class ActionExecutor:
         # Limpiar controladores
         for name, controller in self.controllers.items():
             if hasattr(controller, 'cleanup'):
-                controller.cleanup()
+                try:
+                    controller.cleanup()
+                    logger.debug(f"✅ Controlador {name} limpiado")
+                except Exception as e:
+                    logger.error(f"❌ Error limpiando controlador {name}: {e}")
+        
+        # Limpiar historial
+        self.action_history.clear()
+        
+        # Limpiar cola
+        while not self.action_queue.empty():
+            try:
+                self.action_queue.get_nowait()
+                self.action_queue.task_done()
+            except:
+                pass
         
         logger.info("✅ ActionExecutor limpiado")
 
 
-# Uso en NYX
+# ===== EJEMPLO DE USO =====
 if __name__ == "__main__":
     # Configurar logging
     logging.basicConfig(
@@ -616,38 +779,58 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Crear ActionExecutor simulado
-    executor = ActionExecutor()
+    # Crear ActionExecutor con configuración simulada
+    config = {
+        'controllers': {
+            'keyboard': {'enabled': True},
+            'mouse': {'enabled': True, 'sensitivity': 1.0},
+            'window': {'enabled': True},
+            'bash': {'enabled': False}
+        }
+    }
     
-    # Simular perfil gamer
+    executor = ActionExecutor(config)
+    
+    # Simular perfil gamer (compatible con ambos formatos)
     class MockProfileRuntime:
         name = "gamer"
-        gestures = {
-            "fist": {
-                "action": "keyboard",
-                "command": "ctrl+f",
-                "description": "Buscar en juego",
-                "enabled": True,
-                "confidence": 0.7,
-                "hand": "right"
-            },
-            "peace": {
-                "action": "keyboard", 
-                "command": "esc",
-                "description": "Abrir menú",
-                "enabled": True,
-                "confidence": 0.7
-            }
-        }
         
-        def get_gesture(self, name):
-            return self.gestures.get(name)
+        def get_gesture(self, gesture_name, source="hand"):
+            gestures = {
+                "fist": {
+                    "action": "keyboard",
+                    "command": "ctrl+f",
+                    "description": "Buscar en juego",
+                    "enabled": True,
+                    "confidence": 0.7,
+                    "hand": "right"
+                },
+                "peace": {
+                    "action": "keyboard", 
+                    "command": "esc",
+                    "description": "Abrir menú",
+                    "enabled": True,
+                    "confidence": 0.7
+                }
+            }
+            return gestures.get(gesture_name, {})
+        
+        def get_voice_command(self, command_text):
+            commands = {
+                "abrir inventario": {
+                    "action": "keyboard",
+                    "command": "i",
+                    "description": "Abrir inventario",
+                    "enabled": True
+                }
+            }
+            return commands.get(command_text, {})
         
         def get_gesture_count(self):
-            return len(self.gestures)
+            return 2
         
         def get_voice_command_count(self):
-            return 0
+            return 1
     
     # Configurar perfil
     profile = MockProfileRuntime()
@@ -656,17 +839,33 @@ if __name__ == "__main__":
     # Iniciar ejecutor
     executor.start()
     
+    # Probar métodos integrados
+    print("\n🎮 ActionExecutor Integrado para NYX:")
+    print("=" * 50)
+    
     # Probar gesto
-    print("🎮 Probando ActionExecutor con NYX:")
     result = executor.execute_gesture("fist", hand_type="right", confidence=0.8)
-    print(f"  Resultado: {'✅' if result['success'] else '❌'} {result.get('output', result.get('error', ''))}")
+    print(f"Gesto ejecutado: {'✅' if result['success'] else '❌'}")
+    
+    # Probar comando de voz
+    result = executor.execute_voice("abrir inventario")
+    print(f"Voz ejecutada: {'✅' if result['success'] else '❌'}")
     
     # Mostrar estado
     status = executor.get_status()
-    print(f"\n📊 Estado ActionExecutor:")
+    print(f"\n📊 Estado del ActionExecutor:")
     print(f"  Perfil activo: {status['profile']}")
     print(f"  Ejecutando: {status['running']}")
-    print(f"  Acciones ejecutadas: {status['stats']['total_executed']}")
+    print(f"  Acciones totales: {status['stats']['total_executed']}")
+    print(f"  Gestos ejecutados: {status['stats']['gestures']}")
+    print(f"  Comandos voz: {status['stats']['voice_commands']}")
+    
+    # Mostrar historial
+    history = executor.get_action_history(3)
+    print(f"\n📜 Últimas {len(history)} acciones:")
+    for entry in history:
+        print(f"  - {entry.get('gesture_name', entry.get('command_text', 'Acción'))}")
     
     # Limpiar
     executor.cleanup()
+    print("\n✅ Ejemplo completado exitosamente!")

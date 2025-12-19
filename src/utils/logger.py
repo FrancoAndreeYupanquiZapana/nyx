@@ -403,3 +403,15 @@ class NYXLogger:
 
 # ¡NO hay instancia global aquí!
 # El logger debe crearse con la configuración de la app
+# ========= INSTANCIA GLOBAL DEL LOGGER =========
+
+_nyx_logger = NYXLogger(
+    app_name="NYX",
+    log_dir="logs",
+    level="INFO",
+    console=True,
+    colors=True
+)
+
+# Logger principal para imports directos
+logger = _nyx_logger

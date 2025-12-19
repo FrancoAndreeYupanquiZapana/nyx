@@ -38,6 +38,15 @@ class ActionExecutor:
         self.current_profile = None
         self.profile_name = None
         
+        # Callbacks para UI de NYX
+        self.callbacks = {
+            'on_action_start': [],
+            'on_action_complete': [],
+            'on_action_error': [],
+            'on_profile_changed': [],
+            'on_controller_initialized': []  # Nuevo callback
+        }
+
         # Controladores específicos
         self.controllers = {}
         self._init_controllers()
@@ -57,15 +66,6 @@ class ActionExecutor:
             'queue_size': 0
         }
         
-        # Callbacks para UI de NYX
-        self.callbacks = {
-            'on_action_start': [],
-            'on_action_complete': [],
-            'on_action_error': [],
-            'on_profile_changed': [],
-            'on_controller_initialized': []  # Nuevo callback
-        }
-        
         logger.info("✅ ActionExecutor inicializado para NYX")
 
     def _init_controllers(self):
@@ -77,7 +77,7 @@ class ActionExecutor:
             # 🎮 Teclado
             if controller_configs.get('keyboard', {}).get('enabled', True):
                 try:
-                    from .keyboard_controller import KeyboardController
+                    from src.controllers.keyboard_controller import KeyboardController
                     self.controllers['keyboard'] = KeyboardController()
                     logger.info("✅ KeyboardController inicializado")
                     self._run_callbacks('on_controller_initialized', 'keyboard')
@@ -88,9 +88,14 @@ class ActionExecutor:
             # 🖱️ Mouse
             if controller_configs.get('mouse', {}).get('enabled', True):
                 try:
-                    from .mouse_controller import MouseController
-                    mouse_sensitivity = controller_configs.get('mouse', {}).get('sensitivity', 1.0)
-                    self.controllers['mouse'] = MouseController(sensitivity=mouse_sensitivity)
+                    from src.controllers.mouse_controller import MouseController
+                    # Crear configuración simulada para el controlador
+                    mouse_config = self.config.copy()
+                    if 'mouse_settings' not in mouse_config:
+                        mouse_config['mouse_settings'] = {}
+                    mouse_config['mouse_settings']['sensitivity'] = controller_configs.get('mouse', {}).get('sensitivity', 1.0)
+                    
+                    self.controllers['mouse'] = MouseController(config=mouse_config)
                     logger.info("✅ MouseController inicializado")
                     self._run_callbacks('on_controller_initialized', 'mouse')
                 except ImportError as e:
@@ -100,7 +105,7 @@ class ActionExecutor:
             # 🪟 Ventanas
             if controller_configs.get('window', {}).get('enabled', True):
                 try:
-                    from .window_controller import WindowController
+                    from src.controllers.window_controller import WindowController
                     self.controllers['window'] = WindowController()
                     logger.info("✅ WindowController inicializado")
                     self._run_callbacks('on_controller_initialized', 'window')
@@ -111,7 +116,7 @@ class ActionExecutor:
             # 💻 Bash
             if controller_configs.get('bash', {}).get('enabled', False):
                 try:
-                    from .bash_controller import BashController
+                    from src.controllers.bash_controller import BashController
                     self.controllers['bash'] = BashController()
                     logger.info("✅ BashController inicializado")
                     self._run_callbacks('on_controller_initialized', 'bash')
@@ -542,8 +547,8 @@ class ActionExecutor:
             # DELEGAR AL CONTROLADOR ESPECÍFICO
             if action_type in ['keyboard', 'mouse', 'bash', 'window']:
                 if hasattr(controller, 'execute'):
-                    # Usar método execute unificado
-                    result = controller.execute(command, params)
+                    # Usar método execute unificado (pasando acción completa para no perder datos como cursor)
+                    result = controller.execute(command, action)
                 else:
                     # Métodos específicos para compatibilidad
                     result = self._execute_compat_mode(action_type, controller, command, params)

@@ -167,7 +167,8 @@ class HandDetector:
             'hands': hands_data,
             'gestures': all_gestures,
             'stats': self.stats.copy(),
-            'raw_results': results
+            'raw_results': results,
+            'success': True 
         }
     
     def _get_hand_info(self, landmarks, handedness, image_shape) -> Dict:

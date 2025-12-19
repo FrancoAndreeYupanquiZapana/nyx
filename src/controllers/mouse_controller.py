@@ -207,14 +207,31 @@ class MouseController:
     
     def _execute_move(self, data: Dict) -> bool:
         """Ejecuta movimiento de mouse."""
-        x = data.get('x', 0)
-        y = data.get('y', 0)
-        duration = data.get('duration', 0.2)
         relative = data.get('relative', False)
+        duration = data.get('duration', 0.1)
         
-        # Aplicar sensibilidad de NYX
-        x = int(x * self.nyx_config.sensitivity)
-        y = int(y * self.nyx_config.sensitivity)
+        # Verificar si hay datos de cursor desde el gesto
+        gesture_data = data.get('gesture_data', {})
+        cursor_pos = gesture_data.get('cursor')
+        
+        if cursor_pos and self.pyautogui:
+            # Mapeo directo de coordenadas normalizadas a pantalla
+            screen_w, screen_h = self.pyautogui.size()
+            x = int(cursor_pos.get('x', 0) * screen_w)
+            y = int(cursor_pos.get('y', 0) * screen_h)
+            
+            # Forzar movimiento absoluto y sin suavizado excesivo para respuesta rápida
+            relative = False
+            duration = min(duration, 0.05) 
+            logger.debug(f"🖱️ Cursor track: {x}, {y}")
+        else:
+            # Comportamiento normal (params explícitos)
+            x = data.get('x', 0)
+            y = data.get('y', 0)
+            
+            # Aplicar sensibilidad de NYX solo a deltas manuales (no tracking)
+            x = int(x * self.nyx_config.sensitivity)
+            y = int(y * self.nyx_config.sensitivity)
         
         try:
             if relative:

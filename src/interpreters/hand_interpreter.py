@@ -94,6 +94,35 @@ class HandInterpreter:
         
         return interpreted_gestures
     
+    def process_gesture(self, gesture_data: Dict) -> Optional[Dict]:
+        """
+        Procesa un único gesto (método de compatibilidad para GesturePipeline).
+        
+        Args:
+            gesture_data: Datos del gesto individual
+            
+        Returns:
+            Gesto interpretado o None
+        """
+        try:
+            # Usar info vacía si no está disponible (modo compatibilidad)
+            hand_info = {
+                'handedness': gesture_data.get('hand', 'unknown'),
+                'confidence': gesture_data.get('confidence', 0.5)
+            }
+            
+            # Interpretar
+            interpreted = self._interpret_single_gesture(gesture_data, hand_info)
+            
+            if interpreted:
+                if self._is_gesture_stable(interpreted, gesture_data.get('hand', 'unknown')):
+                    return self._apply_gesture_mapping(interpreted)
+            
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error procesando gesto individual: {e}")
+            return None
+    
     def _interpret_single_gesture(self, raw_gesture: Dict, hand_info: Dict) -> Optional[Dict]:
         """
         Interpreta un gesto crudo individual.
@@ -125,6 +154,9 @@ class HandInterpreter:
         # Determinar tipo de gesto basado en nombre
         gesture_type = self._categorize_gesture(gesture_name)
         
+        # Calcular posición del cursor (para gestos de apuntar/control)
+        cursor_pos = self._calculate_cursor_position(gesture_name, hand_info)
+        
         # Crear gesto interpretado
         interpreted_gesture = {
             'type': 'hand',
@@ -135,6 +167,7 @@ class HandInterpreter:
             'raw_confidence': confidence,
             'contextual_confidence': contextual_confidence,
             'timestamp': time.time(),
+            'cursor': cursor_pos,
             'hand_info': {
                 'landmarks_count': len(hand_info.get('landmarks', [])),
                 'bbox_area': hand_info.get('bbox', {}).get('area', 0),
@@ -261,6 +294,71 @@ class HandInterpreter:
             return 0.5
         
         return matches / total
+    
+    def _calculate_cursor_position(self, gesture_name: str, hand_info: Dict) -> Optional[Dict]:
+        """
+        Calcula la posición del cursor basada en landmarks.
+        Normalmente usa la punta del dedo índice.
+        
+        Args:
+            gesture_name: Nombre del gesto
+            hand_info: Información de la mano con landmarks
+            
+        Returns:
+            Dict con x, y (normalizados 0-1) o None
+        """
+        # Solo calcular para gestos relevantes o si se solicita explícitamente
+        relevant_gestures = ['point', 'one', 'palm', 'open', 'ok', 'victory']
+        if gesture_name not in relevant_gestures:
+             # Fallback: si es 'point' pero detectado como otro similar
+             pass
+
+        landmarks = hand_info.get('landmarks', [])
+        if not landmarks:
+            return None
+            
+        try:
+            # Índice de la punta del dedo índice en MediaPipe es 8
+            # Pero landmarks es una lista de dicts o objetos, depende del detector.
+            # HandDetector devuelve lista de dicts con 'x', 'y'
+            
+            # Asumiendo que landmarks está ordenado por índice de MediaPipe (0-20)
+            if len(landmarks) > 8:
+                index_tip = landmarks[8]
+                # MediaPipe landmarks suelen ser ya normalizados (0-1)
+                # HandDetector.detect devuelve px_x / width pero a veces los guarda como ints
+                # Necesitamos normalizados (0-1) para el MouseController
+                
+                raw_x = index_tip.get('x', 0)
+                raw_y = index_tip.get('y', 0)
+                
+                # Si son > 1, probablemente son píxeles, normalizarlos
+                # El hand_info debería tener 'width' y 'height'
+                width = hand_info.get('width', 640)
+                height = hand_info.get('height', 480)
+                
+                if raw_x > 1:
+                    raw_x = raw_x / width
+                if raw_y > 1:
+                    raw_y = raw_y / height
+                    
+                return {
+                    'x': raw_x,
+                    'y': raw_y
+                }
+        except Exception:
+            pass
+            
+        # Fallback: centro del bbox
+        bbox = hand_info.get('bbox', {})
+        if bbox:
+            return {
+                'x': bbox.get('center_x', 0.5),
+                'y': bbox.get('center_y', 0.5)
+            }
+            
+        return None
+
     
     def _categorize_gesture(self, gesture_name: str) -> str:
         """

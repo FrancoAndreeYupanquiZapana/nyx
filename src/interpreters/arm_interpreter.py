@@ -106,6 +106,33 @@ class ArmInterpreter:
         
         return interpreted_gestures
     
+    def process_gesture(self, gesture_data: Dict) -> Optional[Dict]:
+        """
+        Procesa un único gesto (método de compatibilidad para GesturePipeline).
+        
+        Args:
+            gesture_data: Datos del gesto individual
+            
+        Returns:
+            Gesto interpretado o None
+        """
+        try:
+            # Usar datos vacíos para landmarks y ángulos (modo compatibilidad)
+            landmarks = {}
+            angles = {}
+            
+            # Interpretar
+            interpreted = self._interpret_single_gesture(gesture_data, landmarks, angles)
+            
+            if interpreted:
+                if self._is_gesture_stable(interpreted):
+                    return self._apply_gesture_mapping(interpreted)
+            
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error procesando gesto de brazo individual: {e}")
+            return None
+    
     def _interpret_single_gesture(self, raw_gesture: Dict, landmarks: Dict, angles: Dict) -> Optional[Dict]:
         """
         Interpreta un gesto crudo individual de brazo.

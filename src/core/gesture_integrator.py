@@ -117,6 +117,11 @@ class GestureIntegrator:
         
         logger.info("✅ GestureIntegrator inicializado (versión completa)")
     
+    def set_pipeline(self, pipeline):
+        """Asocia el pipeline al integrador."""
+        self.pipeline = pipeline
+
+
     def _initialize_missing_components(self):
         """Inicializa componentes faltantes identificados en el análisis."""
         # Buffer para gestos combinados (mano + brazo)
@@ -324,6 +329,54 @@ class GestureIntegrator:
                 if 'total_delta_y' in state:
                     gesture['total_delta_y'] = state['total_delta_y']
     
+    def process_gesture(self, gesture_data: Dict) -> Optional[Dict]:
+        """
+        Procesa un gesto individual (método para integración con Pipeline).
+        
+        Args:
+            gesture_data: Datos del gesto detectado
+            
+        Returns:
+            Acción a ejecutar o None
+        """
+        try:
+            gesture_type = gesture_data.get('type', 'hand')
+            
+            # 1. Interpretar (si hay intérprete)
+            interpreted = gesture_data
+            if gesture_type in self.interpreters:
+                interpreter = self.interpreters[gesture_type]
+                if hasattr(interpreter, 'process_gesture'):
+                    result = interpreter.process_gesture(gesture_data)
+                    if result:
+                        interpreted = result
+            
+            # 2. Mapear a acción
+            if self.profile_runtime:
+                # Buscar mapeo en perfil
+                gesture_name = interpreted.get('gesture')
+                action = self.profile_runtime.get_gesture_action(
+                    gesture_name=gesture_name, 
+                    source=gesture_type,
+                    hand_type=gesture_data.get('hand', 'right')
+                )
+                
+                if action:
+                    # Mezclar datos del gesto interpretado con la acción
+                    # Importante: Mantener datos como 'cursor'
+                    full_action = action.copy()
+                    full_action.update({
+                        'gesture_data': interpreted, # Aquí va el cursor
+                        'timestamp': time.time()
+                    })
+                    return full_action
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error en process_gesture integrador: {e}")
+            return None
+
     def _cleanup_continuous_gestures(self):
         """Limpia gestos continuos que han expirado."""
         current_time = time.time()

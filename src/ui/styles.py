@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QGroupBo
 from typing import Dict, Any, List, Optional
 import json
 import os
+from utils.logger import logger
 
 
 class Theme:

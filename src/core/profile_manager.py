@@ -405,7 +405,17 @@ class ProfileManager:
                     "hand": "right",
                     "type": "hand",
                     "enabled": True,
+                    "enabled": True,
                     "confidence": 0.6
+                },
+                "point": {
+                    "action": "mouse",
+                    "command": "move",
+                    "description": "Controlar cursor",
+                    "hand": "right",
+                    "type": "hand",
+                    "enabled": True,
+                    "confidence": 0.5
                 }
             },
             voice_commands={

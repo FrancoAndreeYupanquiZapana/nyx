@@ -493,7 +493,8 @@ class ControllersConfigTab(ConfigTabWidget):
         """Carga la configuración."""
         try:
             system_config = self.config_loader.get_system_config()
-            settings = self.config_loader.get_settings()
+            system_config = self.config_loader.get_system_config()
+            settings = self.config_loader.settings
             
             # Configuración del sistema
             general = system_config.get('general', {})
@@ -727,7 +728,8 @@ class UISettingsTab(ConfigTabWidget):
         """Carga la configuración."""
         try:
             system_config = self.config_loader.get_system_config()
-            settings = self.config_loader.get_settings()
+            system_config = self.config_loader.get_system_config()
+            settings = self.config_loader.settings
             
             # Sistema
             general = system_config.get('general', {})
@@ -926,7 +928,8 @@ class PerformanceConfigTab(ConfigTabWidget):
         """Carga la configuración."""
         try:
             system_config = self.config_loader.get_system_config()
-            settings = self.config_loader.get_settings()
+            system_config = self.config_loader.get_system_config()
+            settings = self.config_loader.settings
             
             # Configuración de rendimiento
             performance = system_config.get('performance', {})
@@ -989,6 +992,172 @@ class PerformanceConfigTab(ConfigTabWidget):
             raise
 
 
+
+
+class ProfilesConfigTab(ConfigTabWidget):
+    """Pestaña de configuración de perfiles."""
+    
+    profile_selected = pyqtSignal(str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._init_ui()
+        self.load_config()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Lista de perfiles
+        self.profiles_list = QListWidget()
+        self.profiles_list.currentItemChanged.connect(self._on_profile_selected)
+        layout.addWidget(QLabel("Perfiles disponibles:"))
+        layout.addWidget(self.profiles_list)
+        
+        # Botones
+        btn_layout = QHBoxLayout()
+        self.btn_activate = QPushButton("Activar")
+        self.btn_activate.clicked.connect(self._activate_profile)
+        self.btn_create = QPushButton("Nuevo")
+        self.btn_create.clicked.connect(self._create_profile)
+        self.btn_delete = QPushButton("Eliminar")
+        self.btn_delete.clicked.connect(self._delete_profile)
+        
+        btn_layout.addWidget(self.btn_activate)
+        btn_layout.addWidget(self.btn_create)
+        btn_layout.addWidget(self.btn_delete)
+        layout.addLayout(btn_layout)
+        
+        self.setLayout(layout)
+        
+    def load_config(self):
+        self.profiles_list.clear()
+        profiles = self.config_loader.list_profiles()
+        logger.info(f"DEBUG: ProfilesConfigTab.load_config - profiles type: {type(profiles)}")
+        logger.info(f"DEBUG: ProfilesConfigTab.load_config - profiles content: {profiles}")
+        
+        current_profile = self.config_loader.system_config.get('active_profile', 'default')
+        
+        # Si current_profile es un dict (error conocido), intentar sacar el nombre
+        if isinstance(current_profile, dict):
+            current_profile = current_profile.get('profile_name', 'default')
+            
+        for profile in profiles:
+            if isinstance(profile, dict):
+                logger.error(f"DEBUG: Found dict in profiles list! {profile}")
+                profile_name = profile.get('profile_name', 'unknown')
+                item = QListWidgetItem(str(profile_name))
+            else:
+                item = QListWidgetItem(str(profile))
+                
+            if str(profile) == str(current_profile):
+                item.setText(f"{profile} (Activo)")
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            self.profiles_list.addItem(item)
+
+    def _on_profile_selected(self, current, previous):
+        if current:
+            profile_name = current.text().replace(" (Activo)", "")
+            self.profile_selected.emit(profile_name)
+
+    def _activate_profile(self):
+        current = self.profiles_list.currentItem()
+        if current:
+            profile_name = current.text().replace(" (Activo)", "")
+            sys_config = self.config_loader.get_system_config()
+            sys_config['active_profile'] = profile_name
+            self.config_loader.update_system_config(sys_config)
+            self.config_loader.save_system_config()
+            self.config_changed.emit({'active_profile': profile_name})
+            self.load_config()
+            QMessageBox.information(self, "Perfil Activado", f"Perfil '{profile_name}' activado.")
+
+    def _create_profile(self):
+        name, ok = QInputDialog.getText(self, "Nuevo Perfil", "Nombre del perfil:")
+        if ok and name:
+            if name in self.config_loader.list_profiles():
+                QMessageBox.warning(self, "Error", "El perfil ya existe")
+                return
+            
+            # Crear perfil base copiando el default
+            profile_data = self.config_loader._create_default_profile()
+            profile_data['profile_name'] = name
+            self.config_loader.save_profile(name, profile_data)
+            self.load_config()
+
+    def _delete_profile(self):
+        current = self.profiles_list.currentItem()
+        if current:
+            profile_name = current.text().replace(" (Activo)", "")
+            if profile_name == 'default':
+                QMessageBox.warning(self, "Error", "No se puede eliminar el perfil default")
+                return
+                
+            reply = QMessageBox.question(self, "Confirmar", f"¿Eliminar perfil '{profile_name}'?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.config_loader.delete_profile(profile_name)
+                self.load_config()
+    
+    def save_config(self):
+        pass
+
+
+class GesturesConfigTab(ConfigTabWidget):
+    """Pestaña de configuración de gestos."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.current_profile_data = {}
+        self._init_ui()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout()
+        
+        self.gestures_table = QTableWidget()
+        self.gestures_table.setColumnCount(4)
+        self.gestures_table.setHorizontalHeaderLabels(["Gesto", "Acción", "Detalles", "Habilitado"])
+        self.gestures_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.gestures_table)
+        
+        self.setLayout(layout)
+        
+    def load_config(self):
+        # Cargar gestos del perfil activo por defecto
+        active_profile = self.config_loader.system_config.get('active_profile', 'default')
+        # Fix error known
+        if isinstance(active_profile, dict):
+            active_profile = active_profile.get('profile_name', 'default')
+        self._load_profile(active_profile)
+
+    def _load_profile(self, profile_name):
+        profile_data = self.config_loader.get_profile(profile_name)
+        if not profile_data:
+            return
+            
+        self.current_profile_data = profile_data
+        gestures = profile_data.get('gestures', {})
+        
+        self.gestures_table.setRowCount(0)
+        
+        for name, data in gestures.items():
+            row = self.gestures_table.rowCount()
+            self.gestures_table.insertRow(row)
+            
+            self.gestures_table.setItem(row, 0, QTableWidgetItem(name))
+            self.gestures_table.setItem(row, 1, QTableWidgetItem(data.get('action', '')))
+            self.gestures_table.setItem(row, 2, QTableWidgetItem(data.get('description', '')))
+            
+            check_item = QTableWidgetItem()
+            check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            check_item.setCheckState(Qt.CheckState.Checked if data.get('enabled', True) else Qt.CheckState.Unchecked)
+            self.gestures_table.setItem(row, 3, check_item)
+
+    def save_config(self):
+        pass # Implementar cambios en gestos si se desea
+
+
 class ConfigWindow(QDialog):
     """Ventana de configuración principal de NYX - MEJORADA."""
     
@@ -996,7 +1165,7 @@ class ConfigWindow(QDialog):
     
     def __init__(self, parent=None, gesture_pipeline=None):
         super().__init__(parent)
-        
+         
         self.parent = parent
         self.gesture_pipeline = gesture_pipeline
         
@@ -1010,7 +1179,7 @@ class ConfigWindow(QDialog):
         self._connect_signals()
         
         logger.info("Ventana de configuración inicializada")
-    
+
     def _init_ui(self):
         """Inicializa la interfaz."""
         layout = QVBoxLayout()
@@ -1084,6 +1253,7 @@ class ConfigWindow(QDialog):
         
         # Aplicar estilos
         self._apply_styles()
+
     
     def _apply_styles(self):
         """Aplica estilos a la ventana."""

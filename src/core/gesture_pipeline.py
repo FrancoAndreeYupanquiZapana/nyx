@@ -49,15 +49,13 @@ class GesturePipelineIntegration:
     def process_gesture(self, gesture_data: Dict) -> Optional[Dict]:
         """
         Procesa un gesto detectado y lo convierte en acción.
-        
-        Args:
-            gesture_data: Datos del gesto detectado
-            
-        Returns:
-            Acción a ejecutar o None
         """
+        # Prioridad 1: Usar el integrador especializado si está disponible
+        if hasattr(self, 'gesture_integrator') and self.gesture_integrator:
+            return self.gesture_integrator.process_gesture(gesture_data)
+            
         with self._integration_lock:
-            # Agregar al buffer
+            # Fallback a lógica interna (copia de seguridad)
             self._gesture_buffer.append(gesture_data)
             if len(self._gesture_buffer) > 10:
                 self._gesture_buffer.pop(0)
@@ -73,7 +71,8 @@ class GesturePipelineIntegration:
             
             if action:
                 # Añadir metadata
-                action.update({
+                full_action = action.copy()
+                full_action.update({
                     'trigger': 'gesture',
                     'gesture_data': gesture_data,
                     'timestamp': time.time(),
@@ -81,11 +80,11 @@ class GesturePipelineIntegration:
                 })
                 
                 # Agregar al buffer de acciones
-                self._action_buffer.append(action)
+                self._action_buffer.append(full_action)
                 if len(self._action_buffer) > 10:
                     self._action_buffer.pop(0)
                 
-                return action
+                return full_action
         
         return None
     
@@ -660,9 +659,12 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         if len(self.gesture_history) > self.max_history:
             self.gesture_history.pop(0)
         
-        # 5. Emitir señal
+        # 5. Emitir señal (Asegurar que UI tenga el nombre correcto)
         if self.gesture_detected:
-            self.gesture_detected.emit(gesture_data)
+            ui_data = gesture_data.copy()
+            if 'gesture' in ui_data and 'gesture_name' not in ui_data:
+                ui_data['gesture_name'] = ui_data['gesture']
+            self.gesture_detected.emit(ui_data)
         
         # 6. Usar el método integrado para procesar el gesto
         action = self.process_gesture(gesture_data)
@@ -850,7 +852,10 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
             self._emit_status("profile_loaded", profile_info)
             
             if self.profile_changed:
-                self.profile_changed.emit(profile_name, profile_info)
+                safe_name = profile_name if isinstance(profile_name, str) else str(profile_name.get('profile_name', 'unknown') if isinstance(profile_name, dict) else profile_name)
+                logger.info("DEBUG: Emitting profile_changed signal...")
+                self.profile_changed.emit(safe_name, profile_info)
+                logger.info("DEBUG: Signal emitted.")
             
             logger.info(f"✅ Perfil '{profile_name}' cargado exitosamente")
             logger.info(f"📊 Resumen: {profile_info['gesture_count']} gestos, "
@@ -1084,8 +1089,12 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         
         while self.is_running and retry_count < max_retries:
             try:
-                cap = cv2.VideoCapture(device_id)
+                print(f"DEBUG_PRINT: Opening camera {device_id} with CAP_DSHOW...")
+                # Fix para Windows: usar DirectShow
+                cap = cv2.VideoCapture(device_id, cv2.CAP_DSHOW)
+                
                 if cap.isOpened():
+                    print("DEBUG_PRINT: Camera opened successfully")
                     # Configurar propiedades
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
@@ -1171,6 +1180,8 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 else:
                     processed_data = self._process_frame(frame)
                 
+                frame_count += 1
+                
                 processing_time = time.time() - start_process
                 
                 with self._stats_lock:
@@ -1221,8 +1232,11 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 self._process_voice_queue()
                 
             except Exception as e:
+                print(f"DEBUG_PRINT: Camera loop exception: {e}")
                 logger.error(f"❌ Error procesando frame: {e}")
                 logger.error(traceback.format_exc())
+                # NO reiniciar el loop, solo sleep
+                time.sleep(0.1)
         
         # Liberar recursos
         cap.release()

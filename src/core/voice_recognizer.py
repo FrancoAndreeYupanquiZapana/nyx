@@ -339,10 +339,10 @@ class VoiceRecognizer:
     
     def start(self) -> bool:
         """
-        Inicia el reconocedor de voz.
+        Inicia el reconocedor de voz de forma asíncrona.
         
         Returns:
-            True si se inició correctamente
+            True (la inicialización continúa en segundo plano)
         """
         if self.is_running:
             logger.warning("⚠️ VoiceRecognizer ya está en ejecución")
@@ -353,16 +353,26 @@ class VoiceRecognizer:
             self.state = VoiceState.DISABLED
             return False
         
-        if not self.speech_recognition_available:
-            logger.error("❌ No se puede iniciar VoiceRecognizer: módulos no disponibles")
-            self.state = VoiceState.ERROR
-            return False
+        logger.info("▶️ Iniciando VoiceRecognizer (Asíncrono)...")
+        self.state = VoiceState.INITIALIZING
+        self.is_running = True
         
-        logger.info("▶️ Iniciando VoiceRecognizer...")
-        
+        # Iniciar hilo de inicialización para no bloquear el arranque
+        self.init_thread = threading.Thread(
+            target=self._async_init,
+            daemon=True,
+            name="NYX-VoiceInit"
+        )
+        self.init_thread.start()
+        return True
+
+    def _async_init(self):
+        """Inicialización asíncrona de componentes de voz."""
         try:
-            # Inicializar reconocedor
+            print("DEBUG_PRINT: Voice async init started")
+            logger.info("🧵 Hilo de inicialización de voz comenzado")
             import speech_recognition as sr
+            print("DEBUG_PRINT: Speech recognition imported")
             self.recognizer = sr.Recognizer()
             
             # Configurar reconocedor
@@ -372,20 +382,25 @@ class VoiceRecognizer:
             
             # Obtener micrófono
             try:
+                print("DEBUG_PRINT: Attempting to connect microphone...")
+                logger.info("🎤 Conectando con micrófono...")
+                # Agregamos timeout simulado o checks previos si fuera posible
                 self.microphone = sr.Microphone()
+                print("DEBUG_PRINT: Microphone object created")
                 self.microphone_available = True
+                logger.info("✅ Micrófono conectado")
             except Exception as e:
+                print(f"DEBUG_PRINT: Microphone init failed: {e}")
                 logger.error(f"❌ Error obteniendo micrófono: {e}")
                 self.microphone_available = False
                 self.state = VoiceState.ERROR
-                return False
+                return
             
-            # Marcar como listo
-            self.is_running = True
             self.state = VoiceState.READY
             self.last_activity_time = time.time()
             
-            # Iniciar hilos
+            # Iniciar hilos funcionales
+            print("DEBUG_PRINT: Starting voice threads...")
             self.listening_thread = threading.Thread(
                 target=self._listening_loop,
                 daemon=True,
@@ -406,48 +421,51 @@ class VoiceRecognizer:
                 name="NYX-VoiceMonitoring"
             )
             self.monitoring_thread.start()
+            print("DEBUG_PRINT: Voice threads started")
             
             # Calibrar micrófono
-            self._calibrate_microphone()
+            print("DEBUG_PRINT: Calling _calibrate_microphone... DISABLED")
+            # self._calibrate_microphone()
+            print("DEBUG_PRINT: _calibrate_microphone finished (SKIPPED)")
             
             self._emit_state_change("started")
-            logger.info("✅ VoiceRecognizer iniciado")
-            return True
+            logger.info("✅ VoiceRecognizer iniciado completamente")
             
         except Exception as e:
-            logger.error(f"❌ Error iniciando VoiceRecognizer: {e}")
+            print(f"DEBUG_PRINT: Async init failed: {e}")
+            logger.error(f"❌ Error crítico en inicialización asíncrona de voz: {e}")
             self.state = VoiceState.ERROR
+            self.is_running = False
             self._emit_error("start_error", str(e))
-            return False
-    
+
     def _calibrate_microphone(self):
         """Calibra el micrófono para ruido ambiente."""
         if not self.microphone_available or not self.recognizer:
             return
         
         try:
+            print("DEBUG_PRINT: Inside _calibrate_microphone")
             logger.info("🔊 Calibrando micrófono para ruido ambiente...")
             self.state = VoiceState.CALIBRATING
             
             import speech_recognition as sr
             
             with self.microphone as source:
-                # Calibrar múltiples veces para mejor precisión
-                energy_levels = []
-                for i in range(5):
-                    self.recognizer.adjust_for_ambient_noise(source, duration=0.8)
-                    energy_levels.append(self.recognizer.energy_threshold)
-                    time.sleep(0.2)
+                print("DEBUG_PRINT: Adjusting for ambient noise...")
+                # Calibrar una vez con timeout corto para evitar hangs
+                self.recognizer.adjust_for_ambient_noise(source, duration=1.0)
+                print("DEBUG_PRINT: Ambient noise adjusted")
                 
                 # Calcular nivel de ruido de fondo
-                self.background_noise_level = sum(energy_levels) / len(energy_levels)
+                self.background_noise_level = self.recognizer.energy_threshold
                 self.calibrated = True
-                self.calibration_samples = 5
+                self.calibration_samples = 1
                 
                 logger.info(f"✅ Calibración completada. Nivel de ruido: {self.background_noise_level:.1f}")
                 self.state = VoiceState.READY
                 
         except Exception as e:
+            print(f"DEBUG_PRINT: Calibration failed: {e}")
             logger.error(f"❌ Error calibrando micrófono: {e}")
             self.calibrated = False
             self.state = VoiceState.ERROR

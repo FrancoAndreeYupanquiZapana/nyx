@@ -76,9 +76,16 @@ class CameraView(QFrame):
         
         # Actualizar información
         if gestures:
-            hand_count = gestures.get('hand_count', 0)
-            confidence = gestures.get('confidence', 0.0)
-            gesture_count = len(gestures.get('detected_gestures', []))
+            if isinstance(gestures, list):
+                hand_count = len(gestures)
+                # Calculate average confidence if list
+                confs = [g.get('confidence', 0) for g in gestures if isinstance(g, dict)]
+                confidence = sum(confs) / len(confs) if confs else 0.0
+                gesture_count = len(gestures) # Simplified count
+            elif isinstance(gestures, dict):
+                hand_count = gestures.get('hand_count', 0)
+                confidence = gestures.get('confidence', 0.0)
+                gesture_count = len(gestures.get('detected_gestures', []))
             
             self.info_label.setText(
                 f"Gestos: {gesture_count} | "
@@ -944,13 +951,17 @@ class MainWindow(QMainWindow):
             
             # 7. Cargar perfil en el pipeline
             logger.info(f"🔧 Cargando perfil en pipeline: {profile_name}")
+            logger.info("DEBUG: Calling internal load_profile...")
             success = self.gesture_pipeline.load_profile(profile_name)
+            logger.info(f"DEBUG: Internal load_profile returned: {success}")
             
             if not success:
                 raise Exception(f"No se pudo cargar el perfil: {profile_name}")
             
             # 8. Iniciar pipeline
+            logger.info("DEBUG: Calling pipeline.start()...")
             success = self.gesture_pipeline.start()
+            logger.info(f"DEBUG: pipeline.start() returned: {success}")
             
             if not success:
                 raise Exception("No se pudo iniciar el GesturePipeline")
@@ -1052,7 +1063,8 @@ class MainWindow(QMainWindow):
     def _on_frame_available(self, data: dict):
         """Manejador cuando hay un nuevo frame disponible del pipeline."""
         try:
-            frame = data.get('frame')
+            # Fix: La clave correcta enviada por GesturePipeline es 'image', no 'frame'
+            frame = data.get('image')
             gestures = data.get('gestures', {})
 
             if frame is not None:
@@ -1069,7 +1081,7 @@ class MainWindow(QMainWindow):
     def _on_gesture_detected(self, gesture_data: Dict[str, Any]):
         """Manejador cuando se detecta un gesto."""
         try:
-            gesture_name = gesture_data.get('gesture_name', 'Desconocido')
+            gesture_name = gesture_data.get('gesture_name') or gesture_data.get('gesture', 'Desconocido')
             confidence = gesture_data.get('confidence', 0.0)
             action_name = gesture_data.get('action_name', '')
             
@@ -1300,8 +1312,11 @@ class MainWindow(QMainWindow):
                 # Cuando se guarda un perfil → recargar selector
                 self.profile_window.profile_saved.connect(self.profile_selector.load_profiles)
                 
-                # Cuando se selecciona un perfil → actualizar selector
+                # Cuando se selecciona un perfil → actualizar selector (visual)
                 self.profile_window.profile_selected.connect(self.profile_selector.set_profile)
+            
+                # Cuando se activa un perfil → cambiar perfil activo
+                self.profile_window.profile_activated.connect(self.profile_selector.set_profile)
             
             self.profile_window.show()
             self.profile_window.raise_()

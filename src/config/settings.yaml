@@ -45,6 +45,7 @@ ui:
   show_fps: true
   show_gesture_info: true
   show_landmarks: true
+  theme: dark
 version: 1.0.0
 voice_recognition:
   activation_word: nyx

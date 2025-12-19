@@ -191,7 +191,8 @@ class ArmDetector:
             'gestures': gestures,
             'angles': angles,
             'stats': self.stats.copy(),
-            'raw_results': results
+            'raw_results': results,
+            'success': True
         }
     
     def _extract_landmarks(self, landmarks, image_shape) -> Dict:

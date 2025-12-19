@@ -638,7 +638,7 @@ class ProfileManagerWindow(QDialog):
         """Carga la lista de perfiles disponibles."""
         self.profile_list.clear()
         
-        profiles = self.profile_manager.list_profiles()
+        profiles = self.profile_manager.get_profile_names()
         
         if not profiles:
             item = QListWidgetItem("⚠ No hay perfiles disponibles")
@@ -651,7 +651,10 @@ class ProfileManagerWindow(QDialog):
         active_profile = self.config.get_setting('app.last_profile', '')
         
         for profile_name in profiles:
-            item = QListWidgetItem(profile_name)
+            if isinstance(profile_name, dict):
+                 profile_name = profile_name.get('profile_name', 'Unknown')
+                 
+            item = QListWidgetItem(str(profile_name))
             
             # Resaltar perfil activo
             if profile_name == active_profile:
@@ -661,7 +664,10 @@ class ProfileManagerWindow(QDialog):
             
             # Cargar información del perfil para tooltip
             try:
-                profile_data = self.profile_manager.load_profile(profile_name)
+                profile_obj = self.profile_manager.get_profile(profile_name)
+                if not profile_obj:
+                    continue
+                profile_data = profile_obj.to_dict()
                 description = profile_data.get('description', 'Sin descripción')
                 author = profile_data.get('author', 'Desconocido')
                 gestures_count = len(profile_data.get('gestures', {}))
@@ -695,9 +701,14 @@ class ProfileManagerWindow(QDialog):
             return
         
         try:
+            logger.info(f"DEBUG: Selected profile raw name: '{profile_name}'")
             # Cargar datos del perfil
-            profile_data = self.profile_manager.load_profile(profile_name)
+            profile_obj = self.profile_manager.get_profile(profile_name)
+            if not profile_obj:
+                raise ValueError(f"Perfil '{profile_name}' no encontrado")
+            profile_data = profile_obj.to_dict()
             self.current_profile = profile_name
+            logger.info(f"DEBUG: self.current_profile set to: '{self.current_profile}'")
             
             # Actualizar información del perfil
             description = profile_data.get('description', 'Sin descripción')
@@ -920,8 +931,10 @@ class ProfileManagerWindow(QDialog):
             
             if reply == QMessageBox.StandardButton.Yes:
                 # Recargar perfil original
-                profile_data = self.profile_manager.load_profile(self.current_profile)
-                self.profile_editor.load_profile(self.current_profile, profile_data)
+                profile_obj = self.profile_manager.get_profile(self.current_profile)
+                if profile_obj:
+                    profile_data = profile_obj.to_dict()
+                    self.profile_editor.load_profile(self.current_profile, profile_data)
                 
                 # Resetear estado
                 self.has_unsaved_changes = False
@@ -932,30 +945,34 @@ class ProfileManagerWindow(QDialog):
     
     def _activate_profile(self):
         """Activa el perfil seleccionado."""
-        if not self.current_profile:
+        profile_to_activate = self.current_profile
+        logger.info(f"DEBUG: Activating profile. Current: '{profile_to_activate}'")
+        
+        if not profile_to_activate:
             return
         
         try:
             # Cargar perfil para activarlo
-            success = self.profile_manager.load_profile(self.current_profile)
+            profile_obj = self.profile_manager.get_profile(profile_to_activate)
+            success = profile_obj is not None
             
             if success:
                 # Emitir señal de perfil activado
-                self.profile_activated.emit(self.current_profile)
+                self.profile_activated.emit(profile_to_activate)
                 
                 # Actualizar configuración
-                self.config.update_setting('app.last_profile', self.current_profile)
+                self.config.update_setting('app.last_profile', profile_to_activate)
                 self.config.save_settings()
                 
                 # Actualizar UI
                 self._load_profiles()  # Para mostrar "ACTIVO"
                 
-                self.status_bar.setText(f"🎮 Perfil '{self.current_profile}' activado")
+                self.status_bar.setText(f"🎮 Perfil '{profile_to_activate}' activado")
                 
                 # Mostrar mensaje en parent si existe
                 if self.parent and hasattr(self.parent, '_log_to_console'):
                     self.parent._log_to_console(
-                        f"🎮 Perfil activado: {self.current_profile}",
+                        f"🎮 Perfil activado: {profile_to_activate}",
                         get_color('success')
                     )
                 

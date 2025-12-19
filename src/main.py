@@ -101,15 +101,24 @@ class SplashScreen(QSplashScreen):
     
     def draw_logo(self):
         """Dibuja el logo de NYX en el splash."""
-        painter = QPainter(self.pixmap())
-        painter.setPen(QColor(0, 200, 255))
-        painter.setFont(QFont("Segoe UI", 48, QFont.Weight.Bold))
-        painter.drawText(250, 200, "🎮 NYX")
+        # Obtener el pixmap actual
+        pixmap = self.pixmap()
         
-        painter.setFont(QFont("Segoe UI", 14))
-        painter.setPen(QColor(150, 150, 180))
-        painter.drawText(280, 250, "Control por Gestos y Voz")
-        painter.end()
+        # Crear painter sobre el pixmap
+        painter = QPainter(pixmap)
+        try:
+            painter.setPen(QColor(0, 200, 255))
+            painter.setFont(QFont("Segoe UI", 48, QFont.Weight.Bold))
+            painter.drawText(250, 200, "🎮 NYX")
+            
+            painter.setFont(QFont("Segoe UI", 14))
+            painter.setPen(QColor(150, 150, 180))
+            painter.drawText(280, 250, "Control por Gestos y Voz")
+        finally:
+            painter.end()
+        
+        # Actualizar el splash con el pixmap modificado
+        self.setPixmap(pixmap)
     
     def update_progress(self, message: str, progress: int = 0):
         """Actualiza el mensaje de progreso."""
@@ -382,7 +391,7 @@ class NYXApplication:
         # MouseController
         if system_config.get('controllers', {}).get('mouse', {}).get('enabled', True):
             mouse_sensitivity = system_config.get('controllers', {}).get('mouse', {}).get('sensitivity', 1.0)
-            controllers['mouse'] = MouseController(sensitivity=mouse_sensitivity)
+            controllers['mouse'] = MouseController(config={'mouse_settings': {'sensitivity': mouse_sensitivity}})
         
         # WindowController
         if system_config.get('controllers', {}).get('window', {}).get('enabled', True):

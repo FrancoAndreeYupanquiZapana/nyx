@@ -150,16 +150,30 @@ class ConfigLoader:
     
     # ========== PERFILES (para ProfileRuntime) ==========
     
-    def get_profile(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_profile(self, name: Union[str, Dict]) -> Optional[Dict[str, Any]]:
         """
         Obtiene un perfil por nombre.
         
         Args:
-            name: Nombre del perfil
+            name: Nombre del perfil o diccionario de perfil
             
         Returns:
             Datos del perfil o None si no existe
         """
+        # Si se pasa un diccionario (por error de otras partes), extraer el nombre
+        if isinstance(name, dict):
+            # Si tiene 'profile_name', usalo
+            if 'profile_name' in name:
+                logger.warning(f"⚠️ get_profile recibió un dict, usando 'profile_name': {name['profile_name']}")
+                name = name['profile_name']
+            else:
+                logger.error(f"❌ get_profile recibió un dict sin 'profile_name': {name}")
+                return None
+        
+        if not isinstance(name, str):
+            logger.error(f"❌ get_profile recibió un nombre inválido: {type(name)} - {name}")
+            return None
+
         # Primero buscar en caché
         if name in self.profiles:
             return self.profiles[name].copy()

@@ -605,19 +605,20 @@ class MouseController:
             sensitivity = self.nyx_config.sensitivity
             smooth = self.smooth_factor if self.nyx_config.smooth_movement else 1.0
             
-            # AREA DE TRABAJO EFECTIVA (Reach improvement)
-            # Margen del 15% para que sea fácil llegar a los bordes sin que la mano salga de cámara
-            margin = 0.15
+            # --- LÓGICA DE ALCANCE (REACH) MEJORADA ---
+            # Queremos que con poco movimiento de la mano el mouse llegue lejos.
+            # Multiplicador base de 1.5 para que ya "venga al 100%" como pide el usuario.
+            # El valor de sensitivity de la UI (barra) multiplicará este efecto.
+            reach_multiplier = sensitivity * 1.5
             
-            # Normalización ajustada con margen
-            # Esto expande el rango 15-85% del frame al 0-100% de la pantalla
-            norm_x = (ix / frame_w - margin) / (1 - 2 * margin)
-            norm_y = (iy / frame_h - margin) / (1 - 2 * margin)
+            # Normalización cruda (0 a 1)
+            raw_x = ix / frame_w
+            raw_y = iy / frame_h
             
-            # Aplicar sensibilidad extra (multiplicador) centrada
-            if sensitivity != 1.0:
-                norm_x = (norm_x - 0.5) * sensitivity + 0.5
-                norm_y = (norm_y - 0.5) * sensitivity + 0.5
+            # Escalamiento centrado: (valor - centro) * multiplicador + centro
+            # Esto expande el centro de la cámara hacia los bordes de la pantalla.
+            norm_x = (raw_x - 0.5) * reach_multiplier + 0.5
+            norm_y = (raw_y - 0.5) * reach_multiplier + 0.5
             
             # Limitar a [0, 1] y mapear a pantalla
             norm_x = max(0.0, min(1.0, norm_x))

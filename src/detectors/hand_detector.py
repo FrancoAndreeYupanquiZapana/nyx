@@ -149,9 +149,24 @@ class HandDetector:
                 
                 # Detectar gestos para esta mano
                 gestures = self._detect_gestures(hand_landmarks, handedness)
-                if gestures:
-                    all_gestures.extend(gestures)
-                    self.stats['gestures_detected'] += len(gestures)
+                
+                # ASEGURAR que siempre haya al menos un evento para el interpreter
+                # aunque el detector base no reconozca nada (para mover el mouse)
+                if not gestures:
+                    gestures = [{
+                        'type': 'hand',
+                        'gesture': 'hand_tracking',
+                        'hand': hand_info['handedness'],
+                        'confidence': hand_info['confidence'],
+                        'timestamp': time.time()
+                    }]
+                
+                # Adjuntar hand_info (con landmarks) a cada gesto para el interpreter
+                for g in gestures:
+                    g['hand_info'] = hand_info
+                    
+                all_gestures.extend(gestures)
+                self.stats['gestures_detected'] += len(gestures)
                 
                 # Dibujar landmarks y conexiones
                 self._draw_landmarks(processed_image, hand_landmarks, handedness)
@@ -165,6 +180,7 @@ class HandDetector:
         return {
             'image': processed_image,
             'hands': hands_data,
+            'landmarks': [h['landmarks'] for h in hands_data],
             'gestures': all_gestures,
             'stats': self.stats.copy(),
             'raw_results': results,
@@ -235,7 +251,9 @@ class HandDetector:
             'confidence': confidence,
             'finger_status': finger_status,
             'angles': angles,
-            'color': self.COLORS.get(hand_label, self.COLORS['unknown'])
+            'color': self.COLORS.get(hand_label, self.COLORS['unknown']),
+            'frame_width': w,
+            'frame_height': h
         }
     
     def _detect_gestures(self, landmarks, handedness) -> List[Dict]:

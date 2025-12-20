@@ -4,14 +4,51 @@
   "version": "1.0.0",
   "author": "Sistema",
   "gestures": {
-    "ok": {
-      "action": "keyboard",
-      "command": "enter",
-      "description": "Confirmar/Aceptar",
+    "pinch": {
+      "action": "mouse",
+      "command": "click",
+      "description": "Clic izquierdo (Pinza)",
       "hand": "right",
       "type": "hand",
       "enabled": true,
-      "confidence": 0.7
+      "confidence": 0.6
+    },
+    "drag_start": {
+      "action": "mouse",
+      "command": "drag_start",
+      "description": "Iniciar arrastre",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    },
+    "drag_end": {
+      "action": "mouse",
+      "command": "drag_end",
+      "description": "Finalizar arrastre",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    },
+    "right_click_pinch": {
+      "action": "mouse",
+      "command": "click",
+      "button": "right",
+      "description": "Clic derecho (Pinza Medio)",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    },
+    "scroll_mode": {
+      "action": "mouse",
+      "command": "scroll",
+      "description": "Modo Scroll",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
     },
     "thumbs_up": {
       "action": "keyboard",
@@ -42,12 +79,12 @@
     },
     "point": {
       "action": "mouse",
-      "command": "click",
-      "description": "Click izquierdo",
+      "command": "move",
+      "description": "Controlar cursor",
       "hand": "right",
       "type": "hand",
       "enabled": true,
-      "confidence": 0.6
+      "confidence": 0.5
     },
     "arms_crossed": {
       "action": "keyboard",
@@ -110,5 +147,12 @@
     "keyboard_delay": 0.2,
     "gesture_cooldown": 0.5
   },
-  "enabled_modules": ["hand", "voice", "keyboard", "mouse", "window", "bash"]
+  "enabled_modules": [
+    "hand",
+    "voice",
+    "keyboard",
+    "mouse",
+    "window",
+    "bash"
+  ]
 }

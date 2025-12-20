@@ -9,8 +9,9 @@ import time
 import threading
 import math
 import logging
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass, field
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,12 @@ class MouseController:
         # Estado actual
         self.current_position = (0, 0)
         self.is_dragging = False
-        self.drag_start = None
+        self.drag_start_pos = None
+        
+        # Para suavizado suave (snippet usuario)
+        self.prev_x = 0
+        self.prev_y = 0
+        self.smooth_factor = 5.0
         
         # Para seguimiento de gestos
         self.last_positions = []     # Últimas posiciones para seguimiento
@@ -95,8 +101,8 @@ class MouseController:
             import pyautogui
             self.pyautogui = pyautogui
             
-            # Configurar failsafe (se activa al mover a esquina)
-            self.pyautogui.FAILSAFE = True
+            # Configurar failsafe (snippet usuario: False para evitar interrupciones)
+            self.pyautogui.FAILSAFE = False
             
             self.is_available = True
             logger.debug("✅ Módulo 'pyautogui' cargado para NYX")
@@ -107,25 +113,14 @@ class MouseController:
             logger.error(f"❌ NYX: Error inicializando mouse: {e}")
             self.is_available = False
     
-    def execute(self, command_data: Dict) -> Dict[str, Any]:
+    def execute(self, command_or_data: Union[str, Dict], action_data: Dict = None) -> Dict[str, Any]:
         """
         Ejecuta un comando de mouse desde NYX.
         
         Args:
-            command_data: {
-                'type': 'mouse',
-                'command': 'click' | 'move' | 'scroll' | 'drag' | 'gesture',
-                'button': 'left' | 'right' | 'middle',
-                'clicks': 1,
-                'x': 100,
-                'y': 100,
-                'duration': 0.2,
-                'relative': False,
-                'amount': 3,
-                'direction': 'up' | 'down',
-                'description': 'Descripción para logs'
-            }
-            
+            command_or_data: Comando string O dict completo (para compatibilidad)
+            action_data: Datos adicionales de la acción (incluyendo gesture_data)
+        
         Returns:
             Resultado de la ejecución
         """
@@ -134,10 +129,18 @@ class MouseController:
             logger.error(f"❌ NYX: {error_msg}")
             return self._format_result(False, error=error_msg)
         
+        # Compatibilidad: si se pasa un dict como primer arg, usarlo directamente
+        if isinstance(command_or_data, dict):
+            command_data = command_or_data
+        else:
+            # Modo nuevo: command string + action_data dict
+            command_data = action_data.copy() if action_data else {}
+            command_data['command'] = command_or_data
+        
         command = command_data.get('command', 'click')
         description = command_data.get('description', 'Comando de mouse')
         
-        logger.info(f"🎮 NYX ejecutando mouse: {description}")
+        logger.info(f"🎮 NYX ejecutando mouse: {description} (gesture_data present: {bool(command_data.get('gesture_data'))})")
         
         try:
             success = False
@@ -150,6 +153,10 @@ class MouseController:
                 success = self._execute_scroll(command_data)
             elif command == 'drag':
                 success = self._execute_drag(command_data)
+            elif command == 'drag_start':
+                success = self._execute_drag_start(command_data)
+            elif command == 'drag_end':
+                success = self._execute_drag_end(command_data)
             elif command == 'gesture':
                 success = self._execute_gesture(command_data)
             else:
@@ -181,8 +188,18 @@ class MouseController:
         x = data.get('x')
         y = data.get('y')
         
-        # Aplicar sensibilidad de NYX
-        if x is not None and y is not None:
+        # Verificar si hay datos de cursor desde el gesto
+        gesture_data = data.get('gesture_data', {})
+        cursor_pos = gesture_data.get('cursor')
+        
+        if cursor_pos and self.pyautogui:
+            # Mapeo directo de coordenadas normalizadas a pantalla
+            screen_w, screen_h = self.pyautogui.size()
+            x = int(cursor_pos.get('x', 0) * screen_w)
+            y = int(cursor_pos.get('y', 0) * screen_h)
+            logger.debug(f"🖱️ Click track: {x}, {y}")
+        elif x is not None and y is not None:
+            # Aplicar sensibilidad de NYX solo a deltas manuales
             x = int(x * self.nyx_config.sensitivity)
             y = int(y * self.nyx_config.sensitivity)
         
@@ -214,11 +231,15 @@ class MouseController:
         gesture_data = data.get('gesture_data', {})
         cursor_pos = gesture_data.get('cursor')
         
+        logger.info(f"🔍 _execute_move called: gesture_data={bool(gesture_data)}, cursor_pos={cursor_pos}")
+        
         if cursor_pos and self.pyautogui:
             # Mapeo directo de coordenadas normalizadas a pantalla
             screen_w, screen_h = self.pyautogui.size()
             x = int(cursor_pos.get('x', 0) * screen_w)
             y = int(cursor_pos.get('y', 0) * screen_h)
+            
+            logger.info(f"🎯 Cursor mapping: norm({cursor_pos.get('x', 0):.3f}, {cursor_pos.get('y', 0):.3f}) -> screen({x}, {y})")
             
             # Forzar movimiento absoluto y sin suavizado excesivo para respuesta rápida
             relative = False
@@ -240,9 +261,13 @@ class MouseController:
                 x = current_x + x
                 y = current_y + y
             
-            if self.nyx_config.smooth_movement and duration > 0:
-                # Movimiento suave
-                self._smooth_move(x, y, duration)
+            if self.nyx_config.smooth_movement:
+                # Smoothing exponencial (Snippet Usuario)
+                final_x = self.prev_x + (x - self.prev_x) / self.smooth_factor
+                final_y = self.prev_y + (y - self.prev_y) / self.smooth_factor
+                
+                self.pyautogui.moveTo(final_x, final_y)
+                self.prev_x, self.prev_y = final_x, final_y
             else:
                 # Movimiento directo
                 self.pyautogui.moveTo(x, y, duration=duration)
@@ -273,17 +298,20 @@ class MouseController:
     
     def _execute_scroll(self, data: Dict) -> bool:
         """Ejecuta scroll de mouse."""
-        amount = data.get('amount', self.nyx_config.scroll_amount)
-        direction = data.get('direction', 'up')
+        # Preferir scroll_amount del gesto si existe (proviene del HandInterpreter refined logic)
+        amount = data.get('scroll_amount')
         
-        if direction == 'down':
-            amount = -amount
+        if amount is None:
+            amount = data.get('amount', self.nyx_config.scroll_amount)
+            direction = data.get('direction', 'up')
+            if direction == 'down':
+                amount = -amount
         
         try:
             self.pyautogui.scroll(amount)
             self.stats['total_scrolls'] += 1
             
-            logger.debug(f"🖱️ NYX: Scroll {direction} {abs(amount)} unidades")
+            logger.debug(f"🖱️ NYX: Scroll {amount} unidades")
             return True
         except Exception as e:
             logger.error(f"❌ NYX: Error en scroll: {e}")
@@ -334,6 +362,30 @@ class MouseController:
             return True
         except Exception as e:
             logger.error(f"❌ NYX: Error arrastrando: {e}")
+            return False
+            
+    def _execute_drag_start(self, data: Dict) -> bool:
+        """Inicia un arrastre (mantiene presionado)."""
+        button = data.get('button', 'left')
+        try:
+            self.pyautogui.mouseDown(button=button)
+            self.is_dragging = True
+            logger.debug(f"🖱️ NYX: Arrastre iniciado ({button})")
+            return True
+        except Exception as e:
+            logger.error(f"❌ NYX: Error iniciando arrastre: {e}")
+            return False
+
+    def _execute_drag_end(self, data: Dict) -> bool:
+        """Finaliza un arrastre (suelta el botón)."""
+        button = data.get('button', 'left')
+        try:
+            self.pyautogui.mouseUp(button=button)
+            self.is_dragging = False
+            logger.debug(f"🖱️ NYX: Arrastre finalizado ({button})")
+            return True
+        except Exception as e:
+            logger.error(f"❌ NYX: Error finalizando arrastre: {e}")
             return False
     
     def _execute_gesture(self, data: Dict) -> bool:
@@ -522,6 +574,111 @@ class MouseController:
                 self.nyx_config.smooth_movement = mouse_settings['smooth_movement']
                 logger.info(f"🔄 Movimiento suave: {'ON' if self.nyx_config.smooth_movement else 'OFF'}")
     
+    def process_direct_hand(self, landmarks: List[Dict], frame_w: int, frame_h: int):
+        """
+        Procesa landmarks directamente usando la lógica simple pero EFECTIVA.
+        Bypassea el sistema de acciones tradicional para máximos FPS y fluidez.
+        """
+        if not self.is_available or not landmarks or len(landmarks) < 21:
+            return
+
+        try:
+            # Obtener landmarks clave (formato dict de HandDetector)
+            index_f  = landmarks[8]
+            middle_f = landmarks[12]
+            thumb_f  = landmarks[4]
+            ring_f   = landmarks[16]
+            pinky_f  = landmarks[20]
+            
+            # Coordenadas en píxeles (ya calculadas por HandDetector)
+            ix, iy = index_f['x'], index_f['y']
+            mx, my = middle_f['x'], middle_f['y']
+            tx, ty = thumb_f['x'], thumb_f['y']
+            rx, ry = ring_f['x'], ring_f['y']
+            px, py = pinky_f['x'], pinky_f['y']
+            
+            # Calcular distancias
+            d_it = np.hypot(ix - tx, iy - ty)
+            d_mt = np.hypot(mx - tx, my - ty)
+            
+            # Configuración de NYX
+            sensitivity = self.nyx_config.sensitivity
+            smooth = self.smooth_factor if self.nyx_config.smooth_movement else 1.0
+            
+            # AREA DE TRABAJO EFECTIVA (Reach improvement)
+            # Margen del 15% para que sea fácil llegar a los bordes sin que la mano salga de cámara
+            margin = 0.15
+            
+            # Normalización ajustada con margen
+            # Esto expande el rango 15-85% del frame al 0-100% de la pantalla
+            norm_x = (ix / frame_w - margin) / (1 - 2 * margin)
+            norm_y = (iy / frame_h - margin) / (1 - 2 * margin)
+            
+            # Aplicar sensibilidad extra (multiplicador) centrada
+            if sensitivity != 1.0:
+                norm_x = (norm_x - 0.5) * sensitivity + 0.5
+                norm_y = (norm_y - 0.5) * sensitivity + 0.5
+            
+            # Limitar a [0, 1] y mapear a pantalla
+            norm_x = max(0.0, min(1.0, norm_x))
+            norm_y = max(0.0, min(1.0, norm_y))
+            
+            screen_w, screen_h = self.pyautogui.size()
+            target_x = int(norm_x * screen_w)
+            target_y = int(norm_y * screen_h)
+            
+            # Estados de dedos
+            ring_down  = ry > iy
+            pinky_down = py > iy
+            middle_down = my > iy
+            
+            # --------- MOVER (ÍNDICE + PULGAR EN L) ---------
+            # Solo mueve si los otros dedos están abajo (gesto de apuntar)
+            if d_it > 60 and ring_down and pinky_down and middle_down:
+                # Suavizado suave
+                final_x = self.prev_x + (target_x - self.prev_x) / smooth
+                final_y = self.prev_y + (target_y - self.prev_y) / smooth
+                
+                self.pyautogui.moveTo(int(final_x), int(final_y))
+                self.prev_x, self.prev_y = final_x, final_y
+                
+                # Actualizar posición actual
+                self.current_position = (int(final_x), int(final_y))
+                self.stats['total_movements'] += 1
+                
+            # --------- CLICK IZQUIERDO (PELLIZCO RÁPIDO) ---------
+            elif d_it < 35 and ring_down and pinky_down:
+                now = time.time()
+                if now - self.last_gesture_time > 0.4:  # Cooldown para evitar clics infinitos
+                    self.pyautogui.click()
+                    self.last_gesture_time = now
+                    self.stats['total_clicks'] += 1
+                    logger.info("🖱️ NYX DIRECT: CLICK LEFT")
+            
+            # --------- CLICK DERECHO (CORAZÓN-PULGAR) ---------
+            elif d_mt < 35 and ring_down and pinky_down:
+                now = time.time()
+                if now - self.last_gesture_time > 0.5:
+                    self.pyautogui.click(button="right")
+                    self.last_gesture_time = now
+                    logger.info("🖱️ NYX DIRECT: CLICK RIGHT")
+            
+            # --------- DRAG (MANTENER PELLIZCO) ---------
+            elif d_it < 35:
+                if not self.is_dragging:
+                    self.is_dragging = True
+                    self.pyautogui.mouseDown()
+                    self.stats['total_drags'] += 1
+                    logger.info("🖱️ NYX DIRECT: DRAG START")
+            
+            elif d_it > 70 and self.is_dragging:
+                self.is_dragging = False
+                self.pyautogui.mouseUp()
+                logger.info("🖱️ NYX DIRECT: DRAG END")
+            
+        except Exception as e:
+            logger.debug(f"Error en process_direct_hand: {e}")
+
     def cleanup(self):
         """Limpia recursos para NYX."""
         if self.is_dragging:

@@ -16127,3 +16127,17 @@ Traceback (most recent call last):
     hand_count = gestures.get('hand_count', 0)
                  ^^^^^^^^^^^^
 AttributeError: 'list' object has no attribute 'get'
+06:32:47 - NYX - [31mERROR[0m - Error guardando configuración de controladores: 'ConfigLoader' object has no attribute 'update_settings'
+06:32:47 - NYX - [31mERROR[0m - Error guardando configuración: 'ConfigLoader' object has no attribute 'update_settings'
+06:32:53 - NYX - [31mERROR[0m - Error guardando configuración de controladores: 'ConfigLoader' object has no attribute 'update_settings'
+06:32:53 - NYX - [31mERROR[0m - Error guardando configuración: 'ConfigLoader' object has no attribute 'update_settings'
+07:10:35 - NYX - [31mERROR[0m - ❌ Error creando GesturePipeline: DirectMouseControl.__init__() takes 1 positional argument but 2 were given 
+Traceback (most recent call last):
+  File "C:\Users\ASUS\Documents\LEARNING\IA\Nyx\src\main.py", line 288, in _create_gesture_pipeline
+    pipeline = GesturePipeline(system_config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\Documents\LEARNING\IA\Nyx\src\core\gesture_pipeline.py", line 423, in __init__
+    self.direct_mouse_control = DirectMouseControl(self)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: DirectMouseControl.__init__() takes 1 positional argument but 2 were given
+07:10:35 - NYX - [41mCRITICAL[0m - ❌ ERROR CRÍTICO EN NYX: DirectMouseControl.__init__() takes 1 positional argument but 2 were given 

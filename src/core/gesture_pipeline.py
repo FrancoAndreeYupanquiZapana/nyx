@@ -36,6 +36,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+
+# ========== CONTROL DIRECTO DE MOUSE (BYPASS COMPLEXITY) ==========
+# Ahora integrado directamente con el MouseController de NYX para usar configuraciones de la UI.
+
+
 class GesturePipelineIntegration:
     """Clase base para integración de componentes del pipeline."""
     
@@ -639,12 +644,23 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         source = gesture_data.get('source', 'hand')
         confidence = gesture_data.get('confidence', 0)
         
-        # 1. Verificar cooldown
+        is_high_freq = False
+        if hasattr(self, 'profile_runtime') and self.profile_runtime:
+            action_cfg = self._find_action_for_gesture(gesture_name, source, hand_type)
+            if action_cfg and action_cfg.get('action') == 'mouse':
+                # Bypass cooldown for movement and precision gestures (pinch, scroll)
+                if action_cfg.get('command') in ['move', 'scroll', 'click', 'drag_start', 'drag_end']:
+                     is_high_freq = True
+                     
+        # TAMBIÉN bypass para el evento base de tracking que habilitamos
+        if gesture_name == 'hand_tracking':
+            is_high_freq = True
+
         gesture_key = f"{gesture_name}_{hand_type}_{source}"
         current_time = time.time()
         last_time = self.gesture_cooldowns.get(gesture_key, 0)
         
-        if current_time - last_time < self.min_gesture_interval:
+        if not is_high_freq and (current_time - last_time < self.min_gesture_interval):
             return
         
         # 2. Actualizar cooldown
@@ -1179,6 +1195,17 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 # Opción 2: Procesamiento tradicional
                 else:
                     processed_data = self._process_frame(frame)
+                
+                # ========== CONTROL DIRECTO DE MOUSE (BYPASS COMPLEXITY) ==========
+                # Inyección directa desde el loop de cámara al MouseController
+                if self.action_executor and hasattr(self.action_executor, 'controllers'):
+                    mouse = self.action_executor.controllers.get('mouse')
+                    if mouse and processed_data.get('landmarks'):
+                        for hand_landmarks in processed_data['landmarks']:
+                            if hand_landmarks:
+                                h, w = frame.shape[:2]
+                                mouse.process_direct_hand(hand_landmarks, w, h)
+                                break  # Solo procesar la primera mano
                 
                 frame_count += 1
                 

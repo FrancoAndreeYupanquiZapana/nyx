@@ -607,9 +607,9 @@ class MouseController:
             
             # --- LÓGICA DE ALCANCE (REACH) MEJORADA ---
             # Queremos que con poco movimiento de la mano el mouse llegue lejos.
-            # Multiplicador base de 1.5 para que ya "venga al 100%" como pide el usuario.
-            # El valor de sensitivity de la UI (barra) multiplicará este efecto.
-            reach_multiplier = sensitivity * 1.5
+            # reach_multiplier base de 1.0 (mapeo directo) hasta 4.0 (amplificación fuerte)
+            # Esto soluciona la necesidad de "estirarse" físicamente.
+            reach_multiplier = 1.0 + (sensitivity * 3.0) 
             
             # Normalización cruda (0 a 1)
             raw_x = ix / frame_w

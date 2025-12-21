@@ -1,0 +1,81 @@
+{
+  "profile_name": "gamer",
+  "description": "Perfil para gaming - gestos rápidos y precisos",
+  "version": "1.0.0",
+  "author": "NYX Sistema",
+  "gestures": {
+    "fist": {
+      "action": "keyboard",
+      "command": "ctrl+f",
+      "description": "Abrir búsqueda en juego",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.7
+    },
+    "peace": {
+      "action": "keyboard",
+      "command": "esc",
+      "description": "Abrir menú/pausa",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.7
+    },
+    "thumbs_up": {
+      "action": "bash",
+      "command": "xdotool key F11",
+      "description": "Pantalla completa",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    },
+    "point": {
+      "action": "mouse",
+      "command": "move",
+      "description": "Controlar cursor",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.5
+    },
+    "ok": {
+      "action": "mouse",
+      "command": "click",
+      "description": "Click izquierdo (Pinza)",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    }
+  },
+  "voice_commands": {
+    "nyx abre discord": {
+      "action": "bash",
+      "command": "discord",
+      "description": "Abrir Discord",
+      "enabled": true
+    },
+    "nyx captura pantalla": {
+      "action": "bash",
+      "command": "gnome-screenshot",
+      "description": "Tomar screenshot",
+      "enabled": true
+    }
+  },
+  "settings": {
+    "mouse_sensitivity": 1.5,
+    "keyboard_delay": 0.1,
+    "gesture_cooldown": 0.3,
+    "sensitivity": 7,
+    "response_time": 0.3
+  },
+  "enabled_modules": [
+    "hand",
+    "voice",
+    "keyboard",
+    "mouse",
+    "bash"
+  ]
+}

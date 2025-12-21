@@ -1,0 +1,45 @@
+active_profile: gamer
+camera:
+  device_id: 0
+  width: 1280
+  height: 720
+  fps: 30
+  mirror: true
+hand_detection:
+  enabled: true
+  max_num_hands: 2
+  min_detection_confidence: 0.7
+  min_tracking_confidence: 0.5
+  model_complexity: 1
+arm_detection:
+  enabled: false
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  model_complexity: 1
+voice_recognition:
+  enabled: true
+  activation_word: nyx
+  energy_threshold: 300
+  language: es-ES
+  pause_threshold: 0.8
+  dynamic_energy_threshold: true
+general:
+  app_name: NYX
+  version: 1.0.0
+  debug_mode: false
+  log_level: INFO
+  language: es-ES
+  theme: dark
+quick_actions:
+  screenshot: gnome-screenshot
+  volume_up: amixer set Master 5%+
+  volume_down: amixer set Master 5%-
+  mute: amixer set Master mute
+  unmute: amixer set Master unmute
+  brightness_up: brightnessctl set +5%
+  brightness_down: brightnessctl set 5%-
+ui:
+  show_fps: true
+  show_landmarks: true
+  show_gesture_info: true
+  camera_preview: true

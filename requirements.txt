@@ -1,4 +1,85 @@
-opencv-python
-pyautogui
-numpy
-pyqt6
+#mediapipe==0.10.11
+#opencv-python==4.8.1.78
+#PyQt6==6.6.1
+#numpy==1.24.3
+#pyautogui==0.9.54
+#speechrecognition==3.10.0
+#pyaudio==0.2.13
+#pygetwindow==0.0.9
+#keyboard==0.13.5
+#pyyaml==6.0.1
+
+# Nyx Requirements
+# Versión: 1.0.0
+
+# ==============================================
+# NYX - Gesture Control System v1.0.0
+# Dependencias PRINCIPALES
+# ==============================================
+
+# Interfaz gráfica
+PyQt6==6.6.1
+
+# Visión por computadora
+opencv-python==4.8.1.78
+mediapipe==0.10.11
+numpy==1.24.3
+Pillow==10.1.0
+
+# Control del sistema
+pyautogui==0.9.54
+keyboard==0.13.5
+pynput==1.7.6
+pyperclip==1.8.2
+pygetwindow==0.0.9
+
+# Reconocimiento de voz
+SpeechRecognition==3.10.0
+pyaudio==0.2.13
+
+# Configuración
+PyYAML==6.0.1
+python-dotenv==1.0.0
+
+# Utilidades
+colorama==0.4.6
+
+# ==============================================
+# DEPENDENCIAS DE DESARROLLO (OPCIONAL)
+# ==============================================
+# Instalar con: pip install -r requirements-dev.txt
+#
+# black==23.11.0
+# flake8==6.1.0
+# pytest==7.4.3
+# pytest-qt==4.2.0
+# tqdm==4.66.1
+
+
+# Dependencias principales
+#PyQt6>=6.5.0
+#opencv-python>=4.8.0
+#mediapipe>=0.10.0
+#numpy>=1.24.0
+
+# Reconocimiento de voz
+#speechrecognition>=3.10.0
+#pyaudio>=0.2.13
+
+# Control del sistema
+#pyautogui>=0.9.54
+#pygetwindow>=0.0.9
+#keyboard>=0.13.5
+#mouse>=0.7.1
+
+# Utilidades
+#python-dotenv>=1.0.0
+#pyyaml>=6.0
+#colorama>=0.4.6
+
+# Serialización
+#pickle5>=0.0.12
+
+# Testing
+#pytest>=7.4.0
+#pytest-qt>=4.2.0

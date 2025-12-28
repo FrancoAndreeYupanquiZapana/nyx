@@ -18866,3 +18866,125 @@ TypeError: DirectMouseControl.__init__() takes 1 positional argument but 2 were 
 17:21:26 - NYX - [32mINFO[0m - ==================================================
 17:21:26 - NYX - [32mINFO[0m - 🛑 NYX DETENIDO
 17:21:26 - NYX - [32mINFO[0m - ==================================================
+11:18:34 - NYX - [32mINFO[0m - 📝 Logger NYX configurado (nivel: INFO)
+11:18:34 - NYX - [32mINFO[0m - 📁 Logs en: C:\Users\ASUS\Documents\LEARNING\IA\Nyx\logs
+11:18:34 - NYX - [32mINFO[0m - 🎨 Tema cargado desde configuración: dark
+11:18:37 - NYX - [32mINFO[0m - 📝 Logger NYX configurado (nivel: INFO)
+11:18:37 - NYX - [32mINFO[0m - 📁 Logs en: C:\Users\ASUS\Documents\LEARNING\IA\Nyx\logs
+11:18:37 - NYX - [32mINFO[0m - ==================================================
+11:18:37 - NYX - [32mINFO[0m - 🚀 INICIANDO NYX v1.0.0
+11:18:37 - NYX - [32mINFO[0m - ==================================================
+11:18:37 - NYX - [32mINFO[0m - 📂 Configuración cargada desde: src\config
+11:18:37 - NYX - [32mINFO[0m - 📁 Directorio creado: recorded_gestures
+11:18:37 - NYX - [32mINFO[0m - 📁 Directorio creado: exports
+11:18:37 - NYX - [32mINFO[0m - 📁 Directorio creado: backups
+11:18:37 - NYX - [32mINFO[0m - 📁 Directorio creado: training_data
+11:18:37 - NYX - [32mINFO[0m - 📁 Directorio creado: profiles
+11:18:37 - NYX - [32mINFO[0m - 🎨 Tema cambiado a: dark
+11:18:45 - NYX - [32mINFO[0m - 📷 Cámara 0 disponible
+11:18:45 - NYX - [32mINFO[0m - 🔄 Creando GesturePipeline...
+11:18:46 - NYX - [32mINFO[0m - ✅ HandDetector creado
+11:18:46 - NYX - [32mINFO[0m - ✅ Interpretadores creados
+11:18:46 - NYX - [32mINFO[0m - 👤 Perfil cargado: gamer
+11:18:46 - NYX - [32mINFO[0m - ✅ KeyboardController conectado
+11:18:46 - NYX - [32mINFO[0m - ✅ MouseController conectado
+11:18:46 - NYX - [32mINFO[0m - ✅ WindowController conectado
+11:18:46 - NYX - [32mINFO[0m - ✅ GesturePipeline creado exitosamente
+11:18:47 - NYX - [32mINFO[0m - Configuración cargada correctamente
+11:18:47 - NYX - [32mINFO[0m - ✅ Ventana principal de NYX inicializada
+11:18:48 - NYX - [32mINFO[0m - ============================================================
+11:18:48 - NYX - [32mINFO[0m - 🎉 NYX INICIADO EXITOSAMENTE
+11:18:48 - NYX - [32mINFO[0m - 📁 Directorio: C:\Users\ASUS\Documents\LEARNING\IA\Nyx
+11:18:48 - NYX - [32mINFO[0m - 🎨 Tema: dark
+11:18:48 - NYX - [32mINFO[0m - 📷 Cámara: ✅ Disponible
+11:18:48 - NYX - [32mINFO[0m - 👤 Perfil activo: gamer
+11:18:48 - NYX - [32mINFO[0m - ============================================================
+11:18:54 - NYX - [32mINFO[0m - 📂 Lista de perfiles cargada: 3 perfiles
+11:18:54 - NYX - [32mINFO[0m - ✅ Gestor de perfiles inicializado
+11:18:54 - NYX - [32mINFO[0m - DEBUG: Selected profile raw name: 'custom'
+11:18:54 - NYX - [32mINFO[0m - DEBUG: self.current_profile set to: 'custom'
+11:18:55 - NYX - [32mINFO[0m - DEBUG: Selected profile raw name: 'gamer'
+11:18:55 - NYX - [32mINFO[0m - DEBUG: self.current_profile set to: 'gamer'
+11:18:57 - NYX - [32mINFO[0m - DEBUG: Selected profile raw name: 'productivity'
+11:18:57 - NYX - [32mINFO[0m - DEBUG: self.current_profile set to: 'productivity'
+11:19:00 - NYX - [32mINFO[0m - DEBUG: Activating profile. Current: 'productivity'
+11:19:00 - NYX - [32mINFO[0m - 🔄 Cambiando perfil a: productivity
+11:19:00 - NYX - [32mINFO[0m - 💾 Perfil guardado en settings
+11:19:00 - NYX - [32mINFO[0m - 📂 Lista de perfiles cargada: 3 perfiles
+11:19:00 - NYX - [32mINFO[0m - 🎮 Perfil activado: None
+11:19:09 - NYX - [32mINFO[0m - 🚀 Iniciando sistema NYX con perfil: productivity
+11:19:09 - NYX - [32mINFO[0m - 📋 Configuración del sistema cargada
+11:19:09 - NYX - [32mINFO[0m - 🔧 Cargando perfil en pipeline: productivity
+11:19:09 - NYX - [32mINFO[0m - DEBUG: Calling internal load_profile...
+11:19:09 - NYX - [32mINFO[0m - 🔄 Pipeline cambió a perfil: productivity
+11:19:09 - NYX - [32mINFO[0m - DEBUG: Internal load_profile returned: True
+11:19:09 - NYX - [32mINFO[0m - DEBUG: Calling pipeline.start()...
+11:19:09 - NYX - [32mINFO[0m - DEBUG: pipeline.start() returned: True
+11:19:09 - NYX - [32mINFO[0m - ✅ Sistema NYX iniciado exitosamente
+11:20:40 - NYX - [32mINFO[0m - 🔒 Cerrando aplicación NYX...
+11:20:40 - NYX - [32mINFO[0m - 🛑 Deteniendo sistema NYX...
+11:20:41 - NYX - [32mINFO[0m - ✅ Sistema NYX detenido correctamente
+11:20:41 - NYX - [32mINFO[0m - ✅ Aplicación NYX cerrada correctamente
+11:20:41 - NYX - [32mINFO[0m - 🧹 Limpiando recursos de NYX...
+11:20:41 - NYX - [32mINFO[0m - ✅ Recursos limpiados correctamente
+11:20:41 - NYX - [32mINFO[0m - ==================================================
+11:20:41 - NYX - [32mINFO[0m - 🛑 NYX DETENIDO
+11:20:41 - NYX - [32mINFO[0m - ==================================================
+11:20:41 - NYX - [32mINFO[0m - 🧹 Limpiando recursos de NYX...
+11:20:41 - NYX - [32mINFO[0m - ✅ Recursos limpiados correctamente
+11:20:41 - NYX - [32mINFO[0m - ==================================================
+11:20:41 - NYX - [32mINFO[0m - 🛑 NYX DETENIDO
+11:20:41 - NYX - [32mINFO[0m - ==================================================
+15:54:01 - NYX - [32mINFO[0m - 📝 Logger NYX configurado (nivel: INFO)
+15:54:01 - NYX - [32mINFO[0m - 📁 Logs en: C:\Users\ASUS\Documents\LEARNING\IA\Nyx\logs
+15:54:01 - NYX - [32mINFO[0m - 🎨 Tema cargado desde configuración: dark
+15:54:03 - NYX - [32mINFO[0m - 📝 Logger NYX configurado (nivel: INFO)
+15:54:03 - NYX - [32mINFO[0m - 📁 Logs en: C:\Users\ASUS\Documents\LEARNING\IA\Nyx\logs
+15:54:03 - NYX - [32mINFO[0m - ==================================================
+15:54:03 - NYX - [32mINFO[0m - 🚀 INICIANDO NYX v1.0.0
+15:54:03 - NYX - [32mINFO[0m - ==================================================
+15:54:03 - NYX - [32mINFO[0m - 📂 Configuración cargada desde: src\config
+15:54:03 - NYX - [32mINFO[0m - 🎨 Tema cambiado a: dark
+15:54:10 - NYX - [32mINFO[0m - 📷 Cámara 0 disponible
+15:54:10 - NYX - [32mINFO[0m - 🔄 Creando GesturePipeline...
+15:54:11 - NYX - [32mINFO[0m - ✅ HandDetector creado
+15:54:11 - NYX - [32mINFO[0m - ✅ Interpretadores creados
+15:54:11 - NYX - [32mINFO[0m - 👤 Perfil cargado: gamer
+15:54:11 - NYX - [32mINFO[0m - ✅ KeyboardController conectado
+15:54:11 - NYX - [32mINFO[0m - ✅ MouseController conectado
+15:54:11 - NYX - [32mINFO[0m - ✅ WindowController conectado
+15:54:11 - NYX - [32mINFO[0m - ✅ GesturePipeline creado exitosamente
+15:54:12 - NYX - [32mINFO[0m - Configuración cargada correctamente
+15:54:12 - NYX - [32mINFO[0m - ✅ Ventana principal de NYX inicializada
+15:54:13 - NYX - [32mINFO[0m - ============================================================
+15:54:13 - NYX - [32mINFO[0m - 🎉 NYX INICIADO EXITOSAMENTE
+15:54:13 - NYX - [32mINFO[0m - 📁 Directorio: C:\Users\ASUS\Documents\LEARNING\IA\Nyx
+15:54:13 - NYX - [32mINFO[0m - 🎨 Tema: dark
+15:54:13 - NYX - [32mINFO[0m - 📷 Cámara: ✅ Disponible
+15:54:13 - NYX - [32mINFO[0m - 👤 Perfil activo: gamer
+15:54:13 - NYX - [32mINFO[0m - ============================================================
+15:54:16 - NYX - [32mINFO[0m - 🔄 Cambiando perfil a: gamer
+15:54:16 - NYX - [32mINFO[0m - 💾 Perfil guardado en settings
+15:54:20 - NYX - [32mINFO[0m - 🚀 Iniciando sistema NYX con perfil: gamer
+15:54:20 - NYX - [32mINFO[0m - 📋 Configuración del sistema cargada
+15:54:20 - NYX - [32mINFO[0m - 🔧 Cargando perfil en pipeline: gamer
+15:54:20 - NYX - [32mINFO[0m - DEBUG: Calling internal load_profile...
+15:54:20 - NYX - [32mINFO[0m - 🔄 Pipeline cambió a perfil: gamer
+15:54:20 - NYX - [32mINFO[0m - DEBUG: Internal load_profile returned: True
+15:54:20 - NYX - [32mINFO[0m - DEBUG: Calling pipeline.start()...
+15:54:21 - NYX - [32mINFO[0m - DEBUG: pipeline.start() returned: True
+15:54:21 - NYX - [32mINFO[0m - ✅ Sistema NYX iniciado exitosamente
+15:56:57 - NYX - [32mINFO[0m - 🔒 Cerrando aplicación NYX...
+15:56:57 - NYX - [32mINFO[0m - 🛑 Deteniendo sistema NYX...
+15:56:57 - NYX - [32mINFO[0m - ✅ Sistema NYX detenido correctamente
+15:56:57 - NYX - [32mINFO[0m - ✅ Aplicación NYX cerrada correctamente
+15:56:57 - NYX - [32mINFO[0m - 🧹 Limpiando recursos de NYX...
+15:56:57 - NYX - [32mINFO[0m - ✅ Recursos limpiados correctamente
+15:56:57 - NYX - [32mINFO[0m - ==================================================
+15:56:57 - NYX - [32mINFO[0m - 🛑 NYX DETENIDO
+15:56:57 - NYX - [32mINFO[0m - ==================================================
+15:56:57 - NYX - [32mINFO[0m - 🧹 Limpiando recursos de NYX...
+15:56:57 - NYX - [32mINFO[0m - ✅ Recursos limpiados correctamente
+15:56:57 - NYX - [32mINFO[0m - ==================================================
+15:56:57 - NYX - [32mINFO[0m - 🛑 NYX DETENIDO
+15:56:57 - NYX - [32mINFO[0m - ==================================================

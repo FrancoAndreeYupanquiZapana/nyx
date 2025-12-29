@@ -677,9 +677,11 @@ class KeyboardController:
                 key_str = '+'.join(keys)
                 return self.press_key(key_str)
             
-            elif command_type == 'type':
+            elif command_type == 'type' or command_type == 'type_text':
                 text = command_data.get('text', '')
                 delay = command_data.get('delay', 0.01)
+                if not text and 'args' in command_data:
+                    text = command_data['args'].get('text', '')
                 return self.type_text(text, delay)
             
             elif command_type == 'macro':

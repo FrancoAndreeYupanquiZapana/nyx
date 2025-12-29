@@ -52,14 +52,14 @@ class HandDetector:
         # Gestos reconocidos
         self.GESTURES = {
             'fist': self._is_fist,
-            'peace': self._is_peace,
+            'victory': self._is_peace, # Renamed from peace as per user request
             'thumbs_up': self._is_thumbs_up,
             'thumbs_down': self._is_thumbs_down,
             'rock': self._is_rock,
             'ok': self._is_ok,
             'point': self._is_point,
             'palm': self._is_palm,
-            'victory': self._is_victory,
+            # 'victory': self._is_victory, # Consolidated with peace
             'call_me': self._is_call_me,
             'stop': self._is_stop
         }
@@ -304,12 +304,20 @@ class HandDetector:
             if landmarks.landmark[tip].y < landmarks.landmark[mcp].y:
                 return False
         
-        # Pulgar: verificar si está cerrado
-        thumb_tip = landmarks.landmark[4]
-        thumb_ip = landmarks.landmark[3]
-        if thumb_tip.y < thumb_ip.y:
-            return False
+        # Pulgar: Para un puño, el pulgar debe estar cerca de los dedos o doblado
+        # No requerimos estrictamente que apunte abajo para permitir puños "laterales"
+        # thumb_tip = landmarks.landmark[4]
+        # thumb_ip = landmarks.landmark[3]
+        # if thumb_tip.y < thumb_ip.y:
+        #    return False
         
+        # Check if thumb tip is close to index mcp (tucked in)
+        # thumb_tip = landmarks.landmark[4]
+        # index_mcp = landmarks.landmark[5]
+        # distance = ((thumb_tip.x - index_mcp.x)**2 + (thumb_tip.y - index_mcp.y)**2)**0.5
+        # if distance > 0.2: # If thumb is far away, it's not a fist?
+        #    return False
+
         return True
     
     def _is_peace(self, landmarks) -> bool:
@@ -331,8 +339,13 @@ class HandDetector:
         thumb_ip = landmarks.landmark[3]
         thumb_mcp = landmarks.landmark[2]
         
-        # Pulgar debe estar más arriba que sus articulaciones
+        # Pulgar debe estar más arriba que sus articulaciones y SIGNIFICATIVAMENTE arriba del índice
         if not (thumb_tip.y < thumb_ip.y < thumb_mcp.y):
+            return False
+            
+        index_mcp = landmarks.landmark[5]
+        # El pulgar debe estar más arriba que el nudillo del índice para ser un Thumbs Up claro
+        if thumb_tip.y > index_mcp.y:
             return False
         
         # Los otros dedos deben estar doblados
@@ -436,19 +449,29 @@ class HandDetector:
         return False
     
     def _is_call_me(self, landmarks) -> bool:
-        """Detecta gesto de 'llámame' (pulgar y meñique extendidos)."""
-        # Pulgar y meñique extendidos
-        if (landmarks.landmark[4].y < landmarks.landmark[3].y and  # Pulgar
-            landmarks.landmark[20].y < landmarks.landmark[18].y):  # Meñique
-            # Otros dedos doblados
-            other_tips = [8, 12, 16]  # Índice, medio, anular
-            other_mcp = [5, 9, 13]
-            
-            for tip, mcp in zip(other_tips, other_mcp):
-                if landmarks.landmark[tip].y < landmarks.landmark[mcp].y:
-                    return False
-            return True
-        return False
+        """Detecta gesto de 'llámame' (Shaka: Pulgar y Meñique extendidos)."""
+        # 1. Meñique debe estar EXTENDIDO (Tip arriba de PIP en mano vertical)
+        if not (landmarks.landmark[20].y < landmarks.landmark[18].y):
+             return False
+
+        # 2. Dedos centrales DOBLADOS (Índice, Medio, Anular)
+        # Tip debe estar ABAJO del MCP (y mayor)
+        folded_tips = [8, 12, 16]
+        folded_mcp = [5, 9, 13]
+        for tip, mcp in zip(folded_tips, folded_mcp):
+             if landmarks.landmark[tip].y < landmarks.landmark[mcp].y: # Si alguno está extendido (arriba)
+                 return False
+
+        # 3. Pulgar EXTENDIDO (Relaxed)
+        thumb_tip = landmarks.landmark[4]
+        index_mcp = landmarks.landmark[5]
+        
+        # Distancia para asegurar que no está pegado
+        distance = ((thumb_tip.x - index_mcp.x)**2 + (thumb_tip.y - index_mcp.y)**2)**0.5
+        if distance < 0.1: 
+             return False
+             
+        return True
     
     def _is_stop(self, landmarks) -> bool:
         """Detecta gesto de 'stop' (mano abierta con dedos juntos)."""
@@ -628,32 +651,36 @@ class HandDetector:
         
         # Dibujar gestos detectados
         if gestures:
-            gesture_text = ", ".join([g['gesture'] for g in gestures])
-            cv2.putText(image, gesture_text,
-                       (bbox['x_min'], bbox['y_max'] + 20),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            pass # Eliminar texto de gestos para limpiar UI
+            # gesture_text = ", ".join([g['gesture'] for g in gestures])
+            # cv2.putText(image, gesture_text,
+            #            (bbox['x_min'], bbox['y_max'] + 20),
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         
         # Dibujar centro de la mano
         cv2.circle(image, bbox['center'], 5, color, -1)
     
     def _draw_system_info(self, image):
         """Dibuja información del sistema en la imagen."""
-        h, w = image.shape[:2]
+        # Deshabilitar overlay de sistema (barra negra con texto)
+        return image
         
-        # Fondo semitransparente para texto
-        overlay = image.copy()
-        cv2.rectangle(overlay, (0, 0), (w, 100), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.5, image, 0.5, 0, image)
-        
-        # Información del detector
-        cv2.putText(image, f"🖐️ Hand Detector - FPS: {self.stats['fps']}", 
-                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
-        cv2.putText(image, f"Manos detectadas: {self.stats['hands_detected']} | Gestos: {self.stats['gestures_detected']}", 
-                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-        
-        cv2.putText(image, f"Confianza: {self.min_detection_confidence} | Máx manos: {self.max_num_hands}", 
-                   (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        # h, w = image.shape[:2]
+        # 
+        # # Fondo semitransparente para texto
+        # overlay = image.copy()
+        # cv2.rectangle(overlay, (0, 0), (w, 100), (0, 0, 0), -1)
+        # cv2.addWeighted(overlay, 0.5, image, 0.5, 0, image)
+        # 
+        # # Información del detector
+        # cv2.putText(image, f"🖐️ Hand Detector - FPS: {self.stats['fps']}", 
+        #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        # 
+        # cv2.putText(image, f"Manos detectadas: {self.stats['hands_detected']} | Gestos: {self.stats['gestures_detected']}", 
+        #            (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        # 
+        # cv2.putText(image, f"Confianza: {self.min_detection_confidence} | Máx manos: {self.max_num_hands}", 
+        #            (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         
         return image
     

@@ -5,36 +5,63 @@
   "author": "NYX Sistema",
   "gestures": {
     "fist": {
-      "action": "keyboard",
-      "command": "ctrl+f",
-      "description": "Abrir búsqueda en juego",
+      "action": "mouse",
+      "command": "scroll_mode",
+      "description": "Modo Scroll (Agarre)",
       "hand": "right",
       "type": "hand",
       "enabled": true,
-      "confidence": 0.7
+      "confidence": 0.5
     },
-    "peace": {
-      "action": "keyboard",
-      "command": "esc",
-      "description": "Abrir menú/pausa",
+    "victory": {
+      "action": "mouse",
+      "command": "scroll_up",
+      "description": "Scroll Arriba (Alt)",
       "hand": "right",
       "type": "hand",
       "enabled": true,
-      "confidence": 0.7
+      "confidence": 0.4
     },
     "thumbs_up": {
-      "action": "bash",
-      "command": "xdotool key F11",
-      "description": "Pantalla completa",
+      "action": "mouse",
+      "command": "scroll_up",
+      "description": "Scroll Arriba",
       "hand": "right",
       "type": "hand",
       "enabled": true,
-      "confidence": 0.6
+      "confidence": 0.4
+    },
+    "thumbs_down": {
+      "action": "mouse",
+      "command": "scroll_down",
+      "description": "Scroll Abajo",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "rock": {
+      "action": "mouse",
+      "command": "scroll_down",
+      "description": "Scroll Abajo (Alt)",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "call_me": {
+      "action": "mouse",
+      "command": "right_click",
+      "description": "Click Derecho",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
     },
     "point": {
       "action": "mouse",
       "command": "move",
-      "description": "Controlar cursor",
+      "description": "Controlar cursor (Índice)",
       "hand": "right",
       "type": "hand",
       "enabled": true,
@@ -52,15 +79,23 @@
   },
   "voice_commands": {
     "nyx abre discord": {
-      "action": "bash",
-      "command": "discord",
-      "description": "Abrir Discord",
+      "action": "window",
+      "command": "activate",
+      "window": "discord",
+      "description": "Activar ventana de Discord",
       "enabled": true
     },
     "nyx captura pantalla": {
-      "action": "bash",
-      "command": "gnome-screenshot",
+      "action": "keyboard",
+      "command": "win+printscreen",
       "description": "Tomar screenshot",
+      "enabled": true
+    },
+    "nyx abre chrome": {
+      "action": "window",
+      "command": "activate",
+      "window": "chrome",
+      "description": "Abrir Google Chrome",
       "enabled": true
     }
   },
@@ -76,6 +111,8 @@
     "voice",
     "keyboard",
     "mouse",
-    "bash"
+    "keyboard",
+    "mouse",
+    "window"
   ]
 }

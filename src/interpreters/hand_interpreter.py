@@ -323,6 +323,7 @@ class HandInterpreter:
             d_mt = np.hypot(mtx - tx, mty - ty)
             
             # Estados de dedos (Punta vs su propio nudillo)
+            index_down  = index_f['y'] > index_m['y']
             ring_down   = ring_f['y'] > ring_m['y']
             pinky_down  = pinky_f['y'] > pinky_m['y']
             middle_down = middle_f['y'] > middle_m['y']
@@ -334,7 +335,7 @@ class HandInterpreter:
                 return "call_me"
             
             # --------- MOVER (ÍNDICE + PULGAR EN L) ---------
-            if d_it > 60 and ring_down and pinky_down and middle_down:
+            if not index_down and d_it > 60 and ring_down and pinky_down and middle_down:
                 logger.info(f"🎯 POINT detected: d_it={d_it:.1f}")
                 return "point"
             
@@ -352,13 +353,15 @@ class HandInterpreter:
                 return "right_click_pinch"
             
             # --------- VICTORY / PEACE (SCROLL UP) ---------
-            elif ring_down and pinky_down and d_it > 60 and d_mt > 60:
+            elif not index_down and not middle_down and ring_down and pinky_down and d_it > 60 and d_mt > 60:
                 logger.info(f"✌️ VICTORY detected (scroll_up)")
                 hand_info['scroll_amount'] = 120
                 return "victory"
             
             # --------- ROCK (SCROLL DOWN) ---------
-            elif middle_down and ring_down and d_it > 60:
+            # ROCK DEBE tener el índice ARRIBA (not index_down)
+            # El Shaka TIENE el índice ABAJO (index_down)
+            elif not index_down and middle_down and ring_down and d_it > 60:
                 if pinky_f['y'] < landmarks[18]['y']:
                     logger.info(f"🤘 ROCK detected (scroll_down)")
                     hand_info['scroll_amount'] = -120

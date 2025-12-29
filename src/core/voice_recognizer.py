@@ -129,7 +129,7 @@ class VoiceRecognizer:
         self.state = VoiceState.INITIALIZING
         self.is_running = False
         self.microphone_available = False
-        self.listening_enabled = True
+        self.listening_enabled = False  # EMERGENCY: ALWAYS ON
         self.last_activity_time = time.time()
         
         # Colas para comunicación con NYX
@@ -176,6 +176,30 @@ class VoiceRecognizer:
             os.makedirs(self.audio_samples_dir, exist_ok=True)
         
         logger.info(f"✅ VoiceRecognizer inicializado para NYX (activación: '{self.activation_word}')")
+    
+    def start(self):
+        """Inicia el reconocimiento de voz."""
+        if self.is_running:
+            return
+            
+        self.is_running = True
+        self.listening_enabled = True
+        self.state = VoiceState.READY
+        logger.info("▶️ VoiceRecognizer iniciado")
+
+    def stop(self):
+        """Detiene el reconocimiento de voz de manera controlada."""
+        if not self.is_running:
+            return
+            
+        logger.info("⏹️ Deteniendo VoiceRecognizer...")
+        self.is_running = False
+        self.listening_enabled = False
+        self.state = VoiceState.DISABLED
+        
+        # En una implementación real, aquí se detendrían los hilos de escucha
+        # pero como son daemon, se cerrarán con el proceso principal.
+        # No obstante, marcamos is_running=False para que salgan de sus bucles.
     
     def _init_speech_modules(self) -> bool:
         """Inicializa módulos de reconocimiento de voz."""
@@ -491,6 +515,11 @@ class VoiceRecognizer:
                     time.sleep(0.5)
                     continue
                 
+                # --- CHECK LISTENING ENABLED (Strict Push-to-Talk) ---
+                if not self.listening_enabled:
+                    time.sleep(0.1)
+                    continue
+
                 # Verificar inactividad
                 if (current_time - self.last_activity_time) > self.silence_timeout:
                     if self.state != VoiceState.SLEEPING:
@@ -556,7 +585,7 @@ class VoiceRecognizer:
                         response_time = time.time() - start_time
                         self.stats.add_response_time(response_time)
                         
-                        logger.debug(f"🗣️ Voz detectada ({response_time:.2f}s): '{text}'")
+                        logger.info(f"🗣️ Voz detectada ({response_time:.2f}s): '{text}'")
                         
                         # Guardar audio si está habilitado
                         if audio_data and len(text.strip()) > 3:
@@ -725,6 +754,43 @@ class VoiceRecognizer:
                 
                 # Intentar aprendizaje automático
                 self._learn_from_unknown_command(original_text)
+
+                # --- DICTATION FALLBACK (Dictado Inteligente) ---
+                # Si no es un comando, enviarlo como texto para escribir.
+                if len(text) > 0:
+                     logger.info(f"✍️ Dictado detectado: '{original_text}'")
+                     dictation_action = {
+                        'id': 'dictation_fallback',
+                        'voice_command': VoiceCommand(
+                            id='dictation',
+                            text='dictation',
+                            action='keyboard',
+                            command='type_text',
+                            description='Dictado de voz'
+                        ),
+                        'matched_text': original_text,
+                        'processed_text': text,
+                        'confidence': 1.0, # Asumimos confianza total para dictado
+                        'requires_activation': False,
+                        'has_activation': has_activation,
+                        'timestamp': time.time()
+                     }
+                     
+                     # Encolar acción de dictado
+                     self._enqueue_command(dictation_action)
+                     return
+
+    def activate_listening(self):
+        """Activa la escucha del micrófono (Push-to-Talk Start)."""
+        logger.info("🎤🔊 ACTIVANDO ESCUCHA (Push-to-Talk)")
+        self.listening_enabled = True
+        self.state = VoiceState.READY
+
+    def deactivate_listening(self):
+        """Desactiva la escucha del micrófono (Push-to-Talk Stop)."""
+        logger.info("🎤🔇 DESACTIVANDO ESCUCHA (Push-to-Talk)")
+        self.listening_enabled = False
+        self.state = VoiceState.READY
     
     def _calculate_confidence(self, recognized: str, expected: str, original: str) -> float:
         """
@@ -1111,6 +1177,14 @@ class VoiceRecognizer:
         with self.action_queue.mutex:
             self.action_queue.queue.clear()
         logger.debug("🧹 Cola de acciones limpiada")
+        
+    def _enqueue_command(self, command_data: Dict):
+        """Encola un comando detectado."""
+        try:
+            self.command_queue.put(command_data, timeout=0.1)
+            self._emit_command_detected(command_data)
+        except queue.Full:
+            logger.warning("⚠️ Cola de comandos llena")
     
     def _clear_queues(self):
         """Limpia todas las colas."""

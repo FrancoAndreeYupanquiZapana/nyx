@@ -16141,3 +16141,10 @@ Traceback (most recent call last):
                                 ^^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: DirectMouseControl.__init__() takes 1 positional argument but 2 were given
 07:10:35 - NYX - [41mCRITICAL[0m - ❌ ERROR CRÍTICO EN NYX: DirectMouseControl.__init__() takes 1 positional argument but 2 were given 
+18:05:20 - NYX - [33mWARNING[0m - Recibida señal 2. Cerrando NYX...
+18:34:23 - NYX - [31mERROR[0m - ❌ Error guardando perfil: ProfileManager.save_profile() takes 2 positional arguments but 3 were given
+18:35:41 - NYX - [31mERROR[0m - Error guardando configuración de controladores: 'ConfigLoader' object has no attribute 'update_settings'
+18:35:41 - NYX - [31mERROR[0m - Error guardando configuración: 'ConfigLoader' object has no attribute 'update_settings'
+23:00:52 - NYX - [31mERROR[0m - Error aplicando cambios de detectores: HandDetector.update_config() takes 1 positional argument but 2 were given
+23:00:55 - NYX - [31mERROR[0m - Error guardando configuración de controladores: 'ConfigLoader' object has no attribute 'update_settings'
+23:00:55 - NYX - [31mERROR[0m - Error guardando configuración: 'ConfigLoader' object has no attribute 'update_settings'

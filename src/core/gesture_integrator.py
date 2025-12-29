@@ -993,6 +993,47 @@ class GestureIntegrator:
             
             logger.info(f"✅ Intérprete '{name}' registrado con estadísticas")
     
+    def start(self):
+        """Inicia el integrador de gestos."""
+        if self.running:
+            return
+            
+        self.running = True
+        
+        # Iniciar hilos
+        self.processing_thread = threading.Thread(
+            target=self._processing_loop,
+            daemon=True,
+            name="NYX-Integrator-Processing"
+        )
+        self.processing_thread.start()
+        
+        logger.info("▶️ GestureIntegrator iniciado")
+
+    def stop(self):
+        """Detiene el integrador de gestos."""
+        self.running = False
+        if self.processing_thread and self.processing_thread.is_alive():
+            self.processing_thread.join(timeout=1.0)
+        logger.info("⏹️ GestureIntegrator detenido")
+
+    def set_profile_runtime(self, profile_runtime):
+        """Configura el perfil activo."""
+        self.profile_runtime = profile_runtime
+        if profile_runtime:
+            self.current_profile = profile_runtime.name
+            logger.info(f"🔄 Perfil '{self.current_profile}' cargado en Integrador")
+
+    def load_profile(self, profile_data: Dict):
+        """Carga un perfil desde sus datos."""
+        try:
+            from core.profile_runtime import ProfileRuntime
+            self.profile_runtime = ProfileRuntime(profile_data)
+            self.current_profile = profile_data.get('name', 'unknown')
+            logger.info(f"✅ Perfil '{self.current_profile}' cargado en Integrador")
+        except Exception as e:
+            logger.error(f"❌ Error cargando perfil en Integrador: {e}")
+
     def _apply_profile_mapping(self, gesture: Dict):
         """Busca mapeo en perfil y marca el gesto como mapeado."""
         if not self.profile_runtime:

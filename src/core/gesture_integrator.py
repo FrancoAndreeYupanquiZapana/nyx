@@ -358,7 +358,10 @@ class GestureIntegrator:
                         interpreted = result
             
             # 2. Mapear a acción
-            if self.profile_runtime:
+            action = None
+            if interpreted.get('mapped') and 'action' in interpreted:
+                action = interpreted.copy() # Ya mapeado por el intérprete
+            elif self.profile_runtime:
                 # Buscar mapeo en perfil
                 gesture_name = interpreted.get('gesture')
                 action = self.profile_runtime.get_gesture_action(
@@ -367,16 +370,40 @@ class GestureIntegrator:
                     hand_type=gesture_data.get('hand', 'right')
                 )
                 
-                if action:
-                    # Mezclar datos del gesto interpretado con la acción
-                    # Importante: Mantener datos como 'cursor'
-                    full_action = action.copy()
-                    full_action.update({
-                        'gesture_data': interpreted, # Aquí va el cursor
-                        'timestamp': time.time()
-                    })
-                    return full_action
-                    return full_action
+            if action:
+                # Mezclar datos del gesto interpretado con la acción
+                full_action = action.copy()
+                
+                # REGLA DE ORO: El 'type' para ActionExecutor debe ser el destino (mouse/keyboard/etc)
+                # Si viene del intérprete como 'hand', lo corregimos aquí también por seguridad.
+                target_type = action.get('action', action.get('type', 'mouse'))
+                if target_type == 'hand': target_type = 'mouse'
+                
+                full_action.update({
+                    'type': target_type,
+                    'gesture_data': interpreted,
+                    'timestamp': time.time(),
+                    'action_name': f"{target_type}:{action.get('command')}"
+                })
+                
+                # Notificar en consola para feedback inmediato al usuario
+                hand_label = "Mano"
+                if 'hand' in interpreted:
+                    h = interpreted['hand']
+                    hand_label = "✋ Der" if h == 'right' else "✋ Izq" if h == 'left' else "✋"
+                
+                logger.info(f"{hand_label} mapped: {interpreted.get('gesture')} → {full_action['action_name']}")
+                
+                # Promocionar datos críticos al nivel superior para controladores
+                if 'cursor' in interpreted:
+                    full_action['cursor'] = interpreted['cursor']
+                if 'scroll_amount' in interpreted:
+                    full_action['scroll_amount'] = interpreted['scroll_amount']
+                if 'parameters' in interpreted:
+                    if 'parameters' not in full_action: full_action['parameters'] = {}
+                    full_action['parameters'].update(interpreted['parameters'])
+                        
+                return full_action
             
             # 3. Logic for Push-to-Talk (Puño para Hablar)
             if gesture_type == 'hand' or gesture_type == 'arm':
@@ -1029,7 +1056,16 @@ class GestureIntegrator:
         try:
             from core.profile_runtime import ProfileRuntime
             self.profile_runtime = ProfileRuntime(profile_data)
-            self.current_profile = profile_data.get('name', 'unknown')
+            self.current_profile = profile_data.get('profile_name', 'unknown')
+            
+            # Propagar mapeos a los intérpretes registrados
+            for name, interpreter in self.interpreters.items():
+                if hasattr(interpreter, 'load_gesture_mappings'):
+                    interpreter.load_gesture_mappings(profile_data.get('gestures', {}))
+                    logger.debug(f"📤 Mapeos propagados al intérprete: {name}")
+                elif hasattr(interpreter, 'set_profile_runtime'):
+                    interpreter.set_profile_runtime(self.profile_runtime)
+            
             logger.info(f"✅ Perfil '{self.current_profile}' cargado en Integrador")
         except Exception as e:
             logger.error(f"❌ Error cargando perfil en Integrador: {e}")

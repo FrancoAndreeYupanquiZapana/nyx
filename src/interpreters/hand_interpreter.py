@@ -202,16 +202,17 @@ class HandInterpreter:
         return matches / total if total > 0 else 0.5
     
     def _calculate_cursor_position(self, gesture_name: str, hand_info: Dict) -> Optional[Dict]:
-        """Calcula posición del cursor."""
-        relevant_gestures = ['point', 'one', 'palm', 'open', 'ok', 'victory', 'pinch', 'fist', 'drag_start']
+        """Calcula posición del cursor usando el NUDILLO del índice para estabilidad."""
+        relevant_gestures = ['point', 'ok', 'victory', 'pinch', 'fist', 'drag_start', 'call_me', 'rock']
         if gesture_name not in relevant_gestures: pass
 
         landmarks = hand_info.get('landmarks', [])
         if not landmarks: return None
         try:
-            if len(landmarks) > 8:
-                index_tip = landmarks[8]
-                raw_x, raw_y = index_tip.get('x', 0), index_tip.get('y', 0)
+            # USAR LANDMARK 5 (Nudillo/MCP) para máxima estabilidad
+            if len(landmarks) > 5:
+                index_mcp = landmarks[5]
+                raw_x, raw_y = index_mcp.get('x', 0), index_mcp.get('y', 0)
                 w, h = hand_info.get('frame_width', 640), hand_info.get('frame_height', 480)
                 if raw_x > 1: raw_x /= w
                 if raw_y > 1: raw_y /= h
@@ -220,19 +221,24 @@ class HandInterpreter:
         return None
 
     def _categorize_gesture(self, gesture_name: str) -> str:
-        """Categoriza un gesto."""
+        """Categoriza un gesto para determinar comportamiento de estabilización."""
         categories = {
             'fist': 'command', 'peace': 'command', 'thumbs_up': 'feedback', 'thumbs_down': 'feedback',
-            'ok': 'confirmation', 'point': 'navigation', 'palm': 'control', 'victory': 'celebration',
-            'stop': 'command', 'pinch': 'navigation', 'right_click_pinch': 'navigation', 
-            'scroll_mode': 'control', 'drag_start': 'navigation', 'drag_end': 'navigation'
+            'ok': 'click', 'point': 'navigation', 'palm': 'control', 'victory': 'scroll',
+            'stop': 'command', 'pinch': 'click', 'right_click_pinch': 'click', 
+            'scroll_mode': 'scroll', 'drag_start': 'navigation', 'drag_end': 'navigation',
+            'rock': 'scroll', 'call_me': 'click'
         }
         return categories.get(gesture_name, 'unknown')
     
     def _is_gesture_stable(self, interpreted_gesture: Dict, hand_type: str) -> bool:
-        """Verifica estabilidad."""
-        # Bypassing stability for rapid mouse gestures
-        if interpreted_gesture['gesture'] in ['point', 'scroll_mode', 'pinch', 'right_click_pinch', 'drag_start', 'drag_end']:
+        """Verifica estabilidad del gesto."""
+        # BYPASS para gestos de mouse/precisión que deben ser instantáneos
+        instant_gestures = [
+            'point', 'scroll_mode', 'pinch', 'right_click_pinch', 
+            'drag_start', 'drag_end', 'rock', 'victory', 'call_me'
+        ]
+        if interpreted_gesture['gesture'] in instant_gestures:
             return True
 
         gesture_key = f"{hand_type}_{interpreted_gesture['gesture']}"
@@ -244,11 +250,19 @@ class HandInterpreter:
         return recent_same >= 2
     
     def _apply_gesture_mapping(self, interpreted_gesture: Dict) -> Dict:
-        """Aplica mapeo."""
+        """Aplica mapeo desde el perfil."""
         mapping = self.gesture_mappings.get(f"{interpreted_gesture['hand']}_{interpreted_gesture['gesture']}") or \
                   self.gesture_mappings.get(interpreted_gesture['gesture'])
+        
         if mapping:
-            interpreted_gesture.update({'action': mapping.get('action'), 'command': mapping.get('command'), 'mapped': True})
+            # IMPORTANTE: El 'type' para ActionExecutor debe ser el tipo de acción (mouse, keyboard, etc.)
+            # No el tipo de fuente ('hand')
+            interpreted_gesture.update({
+                'action': mapping.get('action'), 
+                'type': mapping.get('action'), # Sobrescribir 'hand' con 'mouse'/'keyboard'
+                'command': mapping.get('command'), 
+                'mapped': True
+            })
         else:
             interpreted_gesture['mapped'] = False
         return interpreted_gesture
@@ -281,33 +295,43 @@ class HandInterpreter:
         h = hand_info.get('frame_height', 480)
         
         try:
-            # Obtener landmarks clave (igual que el código que funciona)
-            index_f  = landmarks[8]
+            # Obtener landmarks clave
+            index_f  = landmarks[8]   # Punta Índice
+            index_m  = landmarks[5]   # Nudillo Índice (ESTABLE para movimiento)
             middle_f = landmarks[12]
+            middle_m = landmarks[9]
             thumb_f  = landmarks[4]
             ring_f   = landmarks[16]
+            ring_m   = landmarks[13]
             pinky_f  = landmarks[20]
+            pinky_m  = landmarks[17]
             
-            # Convertir directamente a píxeles (SIN doble normalización)
-            ix = int(index_f.get('x', 0) * w)
-            iy = int(index_f.get('y', 0) * h)
-            mx = int(middle_f.get('x', 0) * w)
-            my = int(middle_f.get('y', 0) * h)
-            tx = int(thumb_f.get('x', 0) * w)
-            ty = int(thumb_f.get('y', 0) * h)
-            rx = int(ring_f.get('x', 0) * w)
-            ry = int(ring_f.get('y', 0) * h)
-            px = int(pinky_f.get('x', 0) * w)
-            py = int(pinky_f.get('y', 0) * h)
+            # Coordenadas de movimiento (NUDILLO = ESTABILIDAD)
+            ix = int(index_m.get('x', 0) * w)
+            iy = int(index_m.get('y', 0) * h)
             
-            # Calcular distancias (igual que el código que funciona)
-            d_it = np.hypot(ix - tx, iy - ty)
-            d_mt = np.hypot(mx - tx, my - ty)
+            # Coordenadas de puntas (PARA DISTANCIAS)
+            itx = int(index_f.get('x', 0) * w)
+            ity = int(index_f.get('y', 0) * h)
+            mtx = int(middle_f.get('x', 0) * w)
+            mty = int(middle_f.get('y', 0) * h)
+            tx  = int(thumb_f.get('x', 0) * w)
+            ty  = int(thumb_f.get('y', 0) * h)
             
-            # Estados de dedos (igual que el código que funciona)
-            ring_down  = ry > iy
-            pinky_down = py > iy
-            middle_down = my > iy
+            # Calcular distancias
+            d_it = np.hypot(itx - tx, ity - ty)
+            d_mt = np.hypot(mtx - tx, mty - ty)
+            
+            # Estados de dedos (Punta vs su propio nudillo)
+            ring_down   = ring_f['y'] > ring_m['y']
+            pinky_down  = pinky_f['y'] > pinky_m['y']
+            middle_down = middle_f['y'] > middle_m['y']
+            
+            # --------- CALL ME (RIGHT CLICK) ---------
+            # Prioridad alta para evitar que se confunda con ROCK o SCROLL
+            if gesture_name == 'call_me':
+                logger.info(f"🤙 CALL_ME detected (right click)")
+                return "call_me"
             
             # --------- MOVER (ÍNDICE + PULGAR EN L) ---------
             if d_it > 60 and ring_down and pinky_down and middle_down:
@@ -315,7 +339,7 @@ class HandInterpreter:
                 return "point"
             
             # --------- CLICK IZQUIERDO ---------
-            elif d_it < 35 and ring_down and pinky_down:
+            elif d_it < 65 and ring_down and pinky_down:
                 if time.time() - self.last_click_time > 0.35:
                     self.last_click_time = time.time()
                     logger.info(f"👆 PINCH detected (left click)")
@@ -323,12 +347,25 @@ class HandInterpreter:
                 return None
             
             # --------- CLICK DERECHO ---------
-            elif d_mt < 35 and ring_down and pinky_down:
+            elif d_mt < 65 and ring_down and pinky_down:
                 logger.info(f"👆 RIGHT_CLICK_PINCH detected")
                 return "right_click_pinch"
             
+            # --------- VICTORY / PEACE (SCROLL UP) ---------
+            elif ring_down and pinky_down and d_it > 60 and d_mt > 60:
+                logger.info(f"✌️ VICTORY detected (scroll_up)")
+                hand_info['scroll_amount'] = 120
+                return "victory"
+            
+            # --------- ROCK (SCROLL DOWN) ---------
+            elif middle_down and ring_down and d_it > 60:
+                if pinky_f['y'] < landmarks[18]['y']:
+                    logger.info(f"🤘 ROCK detected (scroll_down)")
+                    hand_info['scroll_amount'] = -120
+                    return "rock"
+            
             # --------- DRAG START ---------
-            elif d_it < 35:
+            elif d_it < 65:
                 if not self.dragging:
                     self.dragging = True
                     logger.info(f"✊ DRAG_START detected")
@@ -336,23 +373,15 @@ class HandInterpreter:
                 return "pinch"  # Hold state
             
             # --------- DRAG END ---------
-            elif d_it > 70 and self.dragging:
+            elif d_it > 95 and self.dragging:
                 self.dragging = False
                 logger.info(f"🖐️ DRAG_END detected")
                 return "drag_end"
             
-            # --------- SCROLL ---------
-            elif d_it > 60 and d_mt > 60:
-                delta = iy - self.prev_scroll_y
-                if delta > 10:
-                    hand_info['scroll_amount'] = -40
-                    logger.info(f"📜 SCROLL DOWN detected")
-                    return "scroll_mode"
-                elif delta < -10:
-                    hand_info['scroll_amount'] = 40
-                    logger.info(f"📜 SCROLL UP detected")
-                    return "scroll_mode"
-                self.prev_scroll_y = iy
+            # --------- SCROLL DINÁMICO (Mano abierta moviéndose) ---------
+            elif d_it > 80 and d_mt > 80 and not ring_down:
+                # Si la mano está muy abierta, ignoramos scroll para evitar falsos positivos
+                pass
             
             # Fallback para seguimiento
             if gesture_name == 'hand_tracking':

@@ -1242,23 +1242,14 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 if self.action_executor and hasattr(self.action_executor, 'controllers'):
                     mouse = self.action_executor.controllers.get('mouse')
                     if mouse and processed_data.get('landmarks'):
-                        # Only move mouse if 'point' gesture is detected OR if we need to process Drag ('ok'/'fist')
-                        input_gestures = processed_data.get('gestures', [])
-                        
-                        # Allow robust control: Point (Move), OK (Drag), Manipulate (Future)
-                        # NOTE: 'fist' removed to prevent accidental Drag/Select when trying to Scroll.
-                        allowed_gestures = ['point', 'ok', 'hand_tracking', 'manipulate'] 
-                        should_process = any(g.get('gesture') in allowed_gestures for g in input_gestures)
-                        
-                        if should_process:
-                            for hand_landmarks in processed_data['landmarks']:
-                                if hand_landmarks:
-                                    h, w = frame.shape[:2]
-                                    mouse.process_direct_hand(hand_landmarks, w, h)
-                                    break  # Solo procesar la primera mano
-                        else:
-                             # Should we stop moving? MouseController handles 'no input' naturally or we can reset
-                             pass
+                        # ========== OPCIÓN NUCLEAR: SIEMPRE PROCESAR SI HAY MANO ==========
+                        # Bypass completo de filtros de gestos
+                        logger.info("🟢 MANO DETECTADA - PROCESANDO MOUSE")
+                        for hand_landmarks in processed_data['landmarks']:
+                            if hand_landmarks:
+                                h, w = frame.shape[:2]
+                                mouse.process_direct_hand(hand_landmarks, w, h)
+                                break  # Solo procesar la primera mano
                 
                 frame_count += 1
                 

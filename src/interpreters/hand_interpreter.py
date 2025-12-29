@@ -51,6 +51,7 @@ class HandInterpreter:
         self.dragging = False
         self.last_click_time = 0
         self.prev_scroll_y = 0
+        self.shaka_start_time = 0
         
         logger.info(f"✅ HandInterpreter inicializado (threshold={gesture_threshold})")
     
@@ -329,10 +330,27 @@ class HandInterpreter:
             middle_down = middle_f['y'] > middle_m['y']
             
             # --------- CALL ME (RIGHT CLICK) ---------
-            # Prioridad alta para evitar que se confunda con ROCK o SCROLL
+            # EXIGENCIA USUARIO: Hold rápido (0.8s) y una sola ejecución.
             if gesture_name == 'call_me':
-                logger.info(f"🤙 CALL_ME detected (right click)")
-                return "call_me"
+                if self.shaka_start_time == 0:
+                    self.shaka_start_time = time.time()
+                
+                hold_duration = time.time() - self.shaka_start_time
+                if hold_duration > 0.8:
+                    if not getattr(self, 'shaka_triggered', False):
+                        logger.info(f"🤙 CALL_ME hold verified (0.8s) -> RIGHT CLICK")
+                        self.shaka_triggered = True
+                        return "call_me"
+                    return None
+                return None
+            else:
+                # Margen de parpadeo (5 frames / ~0.2s) para no resetear el hold
+                if not hasattr(self, '_shaka_lost_frames'): self._shaka_lost_frames = 0
+                self._shaka_lost_frames += 1
+                if self._shaka_lost_frames > 5: 
+                    self.shaka_start_time = 0
+                    self.shaka_triggered = False
+                    self._shaka_lost_frames = 0
             
             # --------- MOVER (ÍNDICE + PULGAR EN L) ---------
             if not index_down and d_it > 60 and ring_down and pinky_down and middle_down:

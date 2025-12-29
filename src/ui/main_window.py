@@ -175,24 +175,8 @@ class GestureStatusWidget(QGroupBox):
         layout = QGridLayout()
         self.setLayout(layout)
         
-        # Indicadores por tipo de detector
-        self.detector_status = {}
-        
-        # Manos
-        self.hand_status = self._create_status_widget("Manos", "hand_detected")
-        layout.addWidget(self.hand_status, 0, 0)
-        
-        # Brazos
-        self.arm_status = self._create_status_widget("Brazos", "arm_detected")
-        layout.addWidget(self.arm_status, 0, 1)
-        
-        # Voz
-        self.voice_status = self._create_status_widget("Voz", "voice_active")
-        layout.addWidget(self.voice_status, 1, 0)
-        
-        # Postura
-        self.pose_status = self._create_status_widget("Postura", "accent")
-        layout.addWidget(self.pose_status, 1, 1)
+        # Stats removed, keeping clean UI
+        pass
         
         # Último gesto detectado
         self.last_gesture_label = QLabel("Último gesto: Ninguno")
@@ -210,57 +194,11 @@ class GestureStatusWidget(QGroupBox):
         
         self.last_update_time = time.time()
     
-    def _create_status_widget(self, name: str, color_name: str) -> QWidget:
-        """Crea un widget de estado individual."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Indicador de estado (círculo)
-        self.detector_status[name] = {
-            'active': False,
-            'confidence': 0.0,
-            'label': QLabel(name),
-            'indicator': QLabel("●"),
-            'confidence_bar': QLabel("0%")
-        }
-        
-        status = self.detector_status[name]
-        status['label'].setAlignment(Qt.AlignmentFlag.AlignCenter)
-        status['indicator'].setAlignment(Qt.AlignmentFlag.AlignCenter)
-        status['indicator'].setStyleSheet(f"""
-            font-size: 24px;
-            color: {get_color('text_disabled')};
-        """)
-        status['confidence_bar'].setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        layout.addWidget(status['label'])
-        layout.addWidget(status['indicator'])
-        layout.addWidget(status['confidence_bar'])
-        
-        return widget
+    # Removed _create_status_widget and update_detector_status
     
     def update_detector_status(self, detector_name: str, active: bool, confidence: float = 0.0):
-        """Actualiza el estado de un detector."""
-        if detector_name not in self.detector_status:
-            return
-        
-        status = self.detector_status[detector_name]
-        status['active'] = active
-        status['confidence'] = confidence
-        
-        color = get_color('gesture_active' if active else 'text_disabled')
-        status['indicator'].setStyleSheet(f"""
-            font-size: 24px;
-            color: {color};
-            font-weight: bold;
-        """)
-        
-        status['confidence_bar'].setText(f"{confidence*100:.0f}%")
-        status['confidence_bar'].setStyleSheet(f"""
-            color: {get_color('text_primary')};
-            font-weight: {'bold' if active else 'normal'};
-        """)
+        # Stub method to prevent errors if called elsewhere
+        pass
     
     def update_gesture_info(self, gesture_name: str, action: str = ""):
         """Actualiza información del último gesto."""
@@ -278,8 +216,8 @@ class GestureStatusWidget(QGroupBox):
     
     def reset(self):
         """Reinicia todos los estados."""
-        for name in self.detector_status:
-            self.update_detector_status(name, False, 0.0)
+        # Resetear todos los estados
+        pass
         
         self.last_gesture_label.setText("Último gesto: Ninguno")
         self.last_action_label.setText("Última acción: Ninguna")

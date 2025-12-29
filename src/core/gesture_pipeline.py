@@ -454,6 +454,34 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 logger.error(f"❌ Error inicializando ActionExecutor: {e}")
                 raise
             
+            # 6. Gesture Integrator (CRÍTICO para coordinación y fusión de gestos)
+            try:
+                from core.gesture_integrator import GestureIntegrator
+                from interpreters.hand_interpreter import HandInterpreter
+                from interpreters.arm_interpreter import ArmInterpreter
+                
+                self.gesture_integrator = GestureIntegrator(self.config)
+                self.gesture_integrator.set_pipeline(self)
+                
+                # Registrar intérpretes especializados
+                self.gesture_integrator.register_interpreter('hand', HandInterpreter())
+                self.gesture_integrator.register_interpreter('arm', ArmInterpreter())
+                
+                # Sincronizar ActionExecutor si existe
+                if self.action_executor:
+                    self.gesture_integrator.action_executor = self.action_executor
+                    
+                # Sincronizar perfil si ya está cargado
+                if self.profile_runtime:
+                    self.gesture_integrator.set_profile_runtime(self.profile_runtime)
+                
+                components_loaded.append("GestureIntegrator")
+                logger.info("✅ GestureIntegrator inicializado y registrado intérpretes")
+            except ImportError as e:
+                logger.warning(f"⚠️ No se pudieron cargar intérpretes para integrador: {e}")
+            except Exception as e:
+                logger.error(f"❌ Error inicializando GestureIntegrator: {e}")
+            
             logger.info(f"🎮 Componentes cargados: {', '.join(components_loaded)}")
             
         except Exception as e:
@@ -599,41 +627,53 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
     def _process_voice_command_immediately(self, command: Dict):
         """Procesa un comando de voz inmediatamente."""
         try:
-            # Usar el sistema integrado para procesar el comando
-            action = self.process_voice_command(command)
+            # Verificar acción directa o mapeada
+            action_type = command.get('action')
             
-            if action and self.action_executor:
-                # Ejecutar acción
-                action_result = self.action_executor.execute(action)
+            if action_type == 'keyboard' and command.get('command') == 'type_text':
+                # --- DICTATION HANDLER ---
+                text_to_type = command.get('matched_text') or command.get('processed_text')
+                if text_to_type and self.action_executor:
+                     logger.info(f"⌨️ Escribiendo texto dictado: {text_to_type}")
+                     # Crear acción de sistema para el teclado
+                     type_action = {
+                         'type': 'system',
+                         'action': 'keyboard',
+                         'command': 'type_text',
+                         'args': {'text': text_to_type}
+                     }
+                     self.action_executor.execute(type_action)
+                return
+
+            # Ejecutar a través del ActionExecutor
+            if self.action_executor:
+                # Convertir voice command a formato de acción estándar
+                action_data = {
+                    'type': 'voice',
+                    'command': command.get('command'),
+                    'action': command.get('action'),
+                    'args': command.get('args', {}),
+                    'confidence': command.get('confidence', 1.0)
+                }
                 
-                # Registrar resultado
-                if action_result:
-                    self.action_history.append({
+                result = self.action_executor.execute(action_data)
+                
+                logger.info(f"🎤 Ejecutando comando de voz: {command.get('text', 'Unknown')}")
+                
+                # Registrar en historial
+                if result:
+                     self.action_history.append({
                         'voice_command': command,
-                        'action': action,
-                        'action_result': action_result,
+                        'action': action_data,
+                        'result': result,
                         'timestamp': time.time()
-                    })
-                    
-                    # Actualizar estadísticas
-                    with self._stats_lock:
-                        self.stats['actions_executed'] += 1
-                        if action_result.get('success', False):
-                            self.stats['actions_successful'] += 1
-                        else:
-                            self.stats['actions_failed'] += 1
-                    
-                    # Emitir señal si se ejecutó
-                    if self.action_executed:
-                        self.action_executed.emit(action, action_result)
-                    
-                    logger.info(f"✅ Comando de voz procesado: {command.get('text', '')}")
-            
-            elif not action:
-                logger.warning(f"⚠️ No se encontró acción para comando: {command.get('text', '')}")
+                     })
+
+            else:
+                logger.warning("⚠️ ActionExecutor no disponible para comando de voz")
                 
         except Exception as e:
-            logger.error(f"❌ Error procesando comando de voz inmediatamente: {e}")
+            logger.error(f"❌ Error procesando comando de voz en pipeline: {e}")
     
     # ========== MÉTODOS DE INTEGRACIÓN SOBREESCRITOS ==========
     
@@ -675,15 +715,16 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         if len(self.gesture_history) > self.max_history:
             self.gesture_history.pop(0)
         
-        # 5. Emitir señal (Asegurar que UI tenga el nombre correcto)
+        # 5. Mapear gesto a acción usando el sistema integrado
+        action = self.process_gesture(gesture_data)
+        
+        # 6. Emitir señal (Asegurar que UI tenga el nombre correcto)
         if self.gesture_detected:
             ui_data = gesture_data.copy()
-            if 'gesture' in ui_data and 'gesture_name' not in ui_data:
-                ui_data['gesture_name'] = ui_data['gesture']
+            ui_data['gesture_name'] = gesture_name
+            if action:
+                ui_data['action_name'] = f"{action.get('type', action.get('action'))}:{action.get('command')}"
             self.gesture_detected.emit(ui_data)
-        
-        # 6. Usar el método integrado para procesar el gesto
-        action = self.process_gesture(gesture_data)
         
         if action and self.action_executor:
             try:
@@ -1201,11 +1242,23 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 if self.action_executor and hasattr(self.action_executor, 'controllers'):
                     mouse = self.action_executor.controllers.get('mouse')
                     if mouse and processed_data.get('landmarks'):
-                        for hand_landmarks in processed_data['landmarks']:
-                            if hand_landmarks:
-                                h, w = frame.shape[:2]
-                                mouse.process_direct_hand(hand_landmarks, w, h)
-                                break  # Solo procesar la primera mano
+                        # Only move mouse if 'point' gesture is detected OR if we need to process Drag ('ok'/'fist')
+                        input_gestures = processed_data.get('gestures', [])
+                        
+                        # Allow robust control: Point (Move), OK (Drag), Manipulate (Future)
+                        # NOTE: 'fist' removed to prevent accidental Drag/Select when trying to Scroll.
+                        allowed_gestures = ['point', 'ok', 'hand_tracking', 'manipulate'] 
+                        should_process = any(g.get('gesture') in allowed_gestures for g in input_gestures)
+                        
+                        if should_process:
+                            for hand_landmarks in processed_data['landmarks']:
+                                if hand_landmarks:
+                                    h, w = frame.shape[:2]
+                                    mouse.process_direct_hand(hand_landmarks, w, h)
+                                    break  # Solo procesar la primera mano
+                        else:
+                             # Should we stop moving? MouseController handles 'no input' naturally or we can reset
+                             pass
                 
                 frame_count += 1
                 
@@ -1321,6 +1374,18 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 time.sleep(0.1)
         
         logger.info("🎤 Bucle de procesamiento de voz terminado")
+    
+    def start_voice_listening(self):
+        """Activa la escucha de voz (Push-to-Talk)."""
+        if self.voice_recognizer and hasattr(self.voice_recognizer, 'activate_listening'):
+            self.voice_recognizer.activate_listening()
+            logger.info("🎙️ Pipeline: Activando escucha de voz")
+
+    def stop_voice_listening(self):
+        """Desactiva la escucha de voz (Push-to-Talk)."""
+        if self.voice_recognizer and hasattr(self.voice_recognizer, 'deactivate_listening'):
+            self.voice_recognizer.deactivate_listening()
+            logger.info("🔇 Pipeline: Desactivando escucha de voz")
     
     def _processing_loop(self):
         """Bucle de procesamiento de acciones en cola."""

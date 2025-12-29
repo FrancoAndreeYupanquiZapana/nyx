@@ -21,7 +21,7 @@ class MouseConfig:
     """Configuración del mouse para NYX."""
     sensitivity: float = 1.0           # Sensibilidad general
     click_delay: float = 0.1           # Retardo entre clics
-    scroll_amount: int = 3             # Cantidad de scroll
+    scroll_amount: int = 300           # Cantidad de scroll (Windows needs ~100 per notch)
     smooth_movement: bool = True       # Movimiento suave
     movement_steps: int = 20           # Pasos para movimiento suave
     gesture_threshold: int = 50        # Umbral para detección de gestos
@@ -57,7 +57,9 @@ class MouseController:
         # Estado actual
         self.current_position = (0, 0)
         self.is_dragging = False
+        self.is_dragging = False
         self.drag_start_pos = None
+        self.pinch_start_time = None # Para diferenciar clic vs drag
         
         # Para suavizado suave (snippet usuario)
         self.prev_x = 0
@@ -158,7 +160,19 @@ class MouseController:
             elif command == 'drag_end':
                 success = self._execute_drag_end(command_data)
             elif command == 'gesture':
-                success = self._execute_gesture(command_data)
+                success = self._execute_gesture(command_data) # Fixed dup
+            elif command == 'scroll_mode':
+                success = self._execute_scroll_mode(command_data)
+            # --- New commands for gamer profile ---
+            elif command == 'scroll_up':
+                command_data['amount'] = self.nyx_config.scroll_amount
+                success = self._execute_scroll(command_data)
+            elif command == 'scroll_down':
+                command_data['amount'] = -self.nyx_config.scroll_amount
+                success = self._execute_scroll(command_data)
+            elif command == 'right_click':
+                command_data['button'] = 'right'
+                success = self._execute_click(command_data)
             else:
                 error_msg = f"Comando de mouse desconocido: {command}"
                 logger.error(f"❌ NYX: {error_msg}")
@@ -311,7 +325,7 @@ class MouseController:
             self.pyautogui.scroll(amount)
             self.stats['total_scrolls'] += 1
             
-            logger.debug(f"🖱️ NYX: Scroll {amount} unidades")
+            logger.info(f"🖱️ NYX: Scroll {amount} unidades")
             return True
         except Exception as e:
             logger.error(f"❌ NYX: Error en scroll: {e}")
@@ -633,9 +647,31 @@ class MouseController:
             pinky_down = py > iy
             middle_down = my > iy
             
-            # --------- MOVER (ÍNDICE + PULGAR EN L) ---------
-            # Solo mueve si los otros dedos están abajo (gesto de apuntar)
+            # --------- HYSTERESIS STATE FOR PINCH ---------
+            # Define thresholds
+            PINCH_START_THRESH = 35
+            PINCH_RELEASE_THRESH = 60
+            
+            # Determine current pinch state based on hysteresis
+            current_distance = d_it
+            is_pinching = False
+            
+            if self.is_dragging: # If already dragging/pinching, use relaxed threshold
+                is_pinching = current_distance < PINCH_RELEASE_THRESH
+            else: # If starting, use strict threshold
+                is_pinching = current_distance < PINCH_START_THRESH
+            
+            
+            # --------- MOVER (ÍNDICE + PULGAR EN L) O DRAG ---------
+            # Move if Pointing (d_it > 60) OR Dragging (is_pinch and is_dragging)
+            should_move = False
+            
             if d_it > 60 and ring_down and pinky_down and middle_down:
+                 should_move = True
+            elif self.is_dragging: # Allow movement while dragging!
+                 should_move = True
+            
+            if should_move:
                 # Suavizado suave
                 final_x = self.prev_x + (target_x - self.prev_x) / smooth
                 final_y = self.prev_y + (target_y - self.prev_y) / smooth
@@ -647,35 +683,48 @@ class MouseController:
                 self.current_position = (int(final_x), int(final_y))
                 self.stats['total_movements'] += 1
                 
-            # --------- CLICK IZQUIERDO (PELLIZCO RÁPIDO) ---------
-            elif d_it < 35 and ring_down and pinky_down:
-                now = time.time()
-                if now - self.last_gesture_time > 0.4:  # Cooldown para evitar clics infinitos
-                    self.pyautogui.click()
-                    self.last_gesture_time = now
-                    self.stats['total_clicks'] += 1
-                    logger.info("🖱️ NYX DIRECT: CLICK LEFT")
+                self.stats['total_movements'] += 1
+                
+            # --------- LOGICA UNIFICADA CLICK / DRAG (Pellizco) ---------
+            # Usar is_pinching calculado con hysteresis
             
-            # --------- CLICK DERECHO (CORAZÓN-PULGAR) ---------
-            elif d_mt < 35 and ring_down and pinky_down:
-                now = time.time()
-                if now - self.last_gesture_time > 0.5:
-                    self.pyautogui.click(button="right")
-                    self.last_gesture_time = now
-                    logger.info("🖱️ NYX DIRECT: CLICK RIGHT")
+            if is_pinching and ring_down and pinky_down:
+                if self.pinch_start_time is None:
+                    # Iniciar cronómetro de pellizco
+                    self.pinch_start_time = time.time()
+                
+                # Calcular duración
+                pinch_duration = time.time() - self.pinch_start_time
+                
+                # Si dura más de 0.4s, es DRAG
+                if pinch_duration > 0.4:
+                    if not self.is_dragging:
+                        self.is_dragging = True
+                        self.pyautogui.mouseDown()
+                        self.stats['total_drags'] += 1
+                        logger.info("🖱️ NYX DIRECT: DRAG START (Hold)")
             
-            # --------- DRAG (MANTENER PELLIZCO) ---------
-            elif d_it < 35:
-                if not self.is_dragging:
-                    self.is_dragging = True
-                    self.pyautogui.mouseDown()
-                    self.stats['total_drags'] += 1
-                    logger.info("🖱️ NYX DIRECT: DRAG START")
-            
-            elif d_it > 70 and self.is_dragging:
-                self.is_dragging = False
-                self.pyautogui.mouseUp()
-                logger.info("🖱️ NYX DIRECT: DRAG END")
+            else:
+                # Si soltamos el pellizco
+                if self.pinch_start_time is not None:
+                    pinch_duration = time.time() - self.pinch_start_time
+                    
+                    if self.is_dragging:
+                        # Si estaba arrastrando, soltar
+                        self.is_dragging = False
+                        self.pyautogui.mouseUp()
+                        logger.info("🖱️ NYX DIRECT: DRAG END")
+                    elif pinch_duration > 0.02: # Filtro de ruido muy corto (reduced from 0.05)
+                        # Si fue corto (< 0.4s) y no arrastramos -> CLIC
+                        # Verificar cooldown de clic
+                        now = time.time()
+                        if now - self.last_gesture_time > 0.2: # Reduced cooldown from 0.3
+                            self.pyautogui.click()
+                            self.last_gesture_time = now
+                            self.stats['total_clicks'] += 1
+                            logger.info("🖱️ NYX DIRECT: CLICK LEFT (Tap)")
+                    
+                    self.pinch_start_time = None
             
         except Exception as e:
             logger.debug(f"Error en process_direct_hand: {e}")
@@ -690,3 +739,45 @@ class MouseController:
                 pass
         
         logger.info("✅ MouseController limpiado para NYX")
+
+    def _execute_scroll_mode(self, data: Dict) -> bool:
+        """
+        Ejecuta modo scroll basado en movimiento vertical del puño (Agarre).
+        """
+        gesture_data = data.get('gesture_data', {})
+        cursor_pos = gesture_data.get('cursor') # {x: 0..1, y: 0..1}
+        
+        if not cursor_pos:
+            return False
+            
+        y = cursor_pos.get('y', 0.5)
+        
+        # Si es el primer frame del gesto, guardar posición inicial
+        if not hasattr(self, 'scroll_last_y') or self.scroll_last_y is None:
+            self.scroll_last_y = y
+            self.scroll_accum = 0
+            logger.debug("🖱️ Scroll Mode Started")
+            return True
+            
+        # Calcular delta
+        dy = y - self.scroll_last_y
+        self.scroll_last_y = y
+        
+        # Umbral de movimiento para scroll
+        threshold = 0.005 # 0.5% movimiento muy sensible
+        multiplier = 200 # Velocidad ajustada
+        
+        if abs(dy) > threshold:
+            # Scroll natural: Mover mano arriba (dy < 0) -> Sube contenido (Scroll Up -> +amount)
+            # Mover mano abajo (dy > 0) -> Baja contenido (Scroll Down -> -amount)
+            # dy es y_new - y_old. 
+            # Si subo la mano, y disminuye -> dy negativo.
+            # Scroll Up es positivo.
+            amount = int(dy * multiplier * -1)
+            
+            # Simple check
+            if abs(amount) > 0:
+                self.pyautogui.scroll(amount)
+                return True
+                
+        return True

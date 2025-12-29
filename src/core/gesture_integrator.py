@@ -115,6 +115,12 @@ class GestureIntegrator:
         # Nuevas estructuras para funcionalidades faltantes
         self._initialize_missing_components()
         
+        # --- Voice Activation State ---
+        self.fist_start_time = None
+        self.is_voice_active = False
+        self.fist_hold_threshold = 1.5  # seconds (Faster activation)
+        self.gesture_loss_time = None   # Grace period timer
+        
         logger.info("✅ GestureIntegrator inicializado (versión completa)")
     
     def set_pipeline(self, pipeline):
@@ -370,6 +376,53 @@ class GestureIntegrator:
                         'timestamp': time.time()
                     })
                     return full_action
+                    return full_action
+            
+            # 3. Logic for Push-to-Talk (Puño para Hablar)
+            if gesture_type == 'hand' or gesture_type == 'arm':
+                 gesture_name = interpreted.get('gesture')
+                 
+                 # Check for 'peace' (Victory) gesture for voice activation
+                 if 'peace' in gesture_name.lower() or 'victory' in gesture_name.lower():
+                     # Gesto presente: Limpiar buffer de pérdida
+                     self.gesture_loss_time = None
+                     
+                     if self.fist_start_time is None:
+                         # Start counting
+                         self.fist_start_time = time.time()
+                         logger.info("✌️ Victory detectado: Iniciando cuenta (3s)...")
+                     else:
+                         # Check duration
+                         duration = time.time() - self.fist_start_time
+                         if duration >= self.fist_hold_threshold and not self.is_voice_active:
+                             logger.info("🎙️ ✅ Voz Activada - ¡Habla ahora!")
+                             self._activate_voice_mode()
+                 else:
+                     # Gesto NO presente (o es otro)
+                     should_reset = True
+                     
+                     # Si estamos contando, usar grace period
+                     if self.fist_start_time is not None:
+                         if self.gesture_loss_time is None:
+                             self.gesture_loss_time = time.time()
+                             should_reset = False
+                             logger.debug("⚠️ Victory pattern lost, buffering...")
+                         elif (time.time() - self.gesture_loss_time) < 0.5:
+                             # Dentro del grace period, mantener estado
+                             should_reset = False
+                     
+                     if should_reset:
+                         # Reset if gesture is lost > grace period
+                         self.gesture_loss_time = None
+                         
+                         if self.fist_start_time is not None:
+                             self.fist_start_time = None
+                             logger.info("✋ Gesto liberado/perdido")
+                         
+                         # If voice was active, deactivate it immediately upon release
+                         if self.is_voice_active:
+                             logger.info("🎙️ Voz Desactivada")
+                             self._deactivate_voice_mode()
             
             return None
             
@@ -940,12 +993,56 @@ class GestureIntegrator:
             
             logger.info(f"✅ Intérprete '{name}' registrado con estadísticas")
     
-    # ========== MÉTODOS RESTANTES DEL CÓDIGO ORIGINAL ==========
-    # (Mantener los métodos existentes que no fueron modificados)
-    
-    # [Aquí irían todos los métodos originales que no requieren cambios]
-    # Por ejemplo: start(), stop(), load_profile(), get_stats(), etc.
-    # Estos se mantienen igual que en tu código original
+    def _apply_profile_mapping(self, gesture: Dict):
+        """Busca mapeo en perfil y marca el gesto como mapeado."""
+        if not self.profile_runtime:
+            return
+            
+        gesture_name = gesture.get('gesture')
+        source = gesture.get('source', 'hand')
+        hand_type = gesture.get('hand', 'right')
+        
+        action = self.profile_runtime.get_gesture_action(
+            gesture_name=gesture_name, 
+            source=source,
+            hand_type=hand_type
+        )
+        
+        if action:
+            gesture['mapped'] = True
+            gesture['action'] = action.get('action')
+            gesture['command'] = action.get('command')
+            # Para visualización en UI
+            gesture['action_name'] = f"{action.get('action')}:{action.get('command')}"
+        else:
+            gesture['mapped'] = False
+
+    def _emit_gesture_signal(self, gesture: Dict):
+        """Emite señal de gesto detectado para la UI."""
+        if self.pipeline and hasattr(self.pipeline, 'gesture_detected'):
+            # El pipeline de NYX usa esta señal para actualizar la UI
+            self.pipeline.gesture_detected.emit(gesture)
+
+    def get_actions(self) -> List[Dict]:
+        """Obtiene y limpia la cola de acciones (para integración pulsada)."""
+        actions = []
+        try:
+            while not self.action_queue.empty():
+                actions.append(self.action_queue.get_nowait())
+                self.action_queue.task_done()
+        except queue.Empty:
+            pass
+        return actions
+
+    def add_detection(self, source_type: str, detections: List[Dict]):
+        """Agrega detecciones crudas a la cola de procesamiento."""
+        if not self.running:
+            return
+            
+        grouped = {source_type: detections}
+        # Podríamos usar la cola detection_queue, pero para NYX es más rápido procesar directo
+        self._route_to_interpreters(grouped)
+
 
 # ========== CLASES AUXILIARES PARA INTEGRACIÓN ==========
 
@@ -1023,5 +1120,48 @@ class GestureSequenceDetector:
         
         return detected_sequences
 
+
+
+    def _activate_voice_mode(self):
+        """Activates the voice recognition mode (Push-to-Talk)."""
+        logger.info("🎙️ Fist held for 3s -> ACTIVATING MICROPHONE")
+        self.is_voice_active = True
+        
+        # Notify Pipeline to Start Listening strictly
+        if self.pipeline and hasattr(self.pipeline, 'start_voice_listening'):
+            self.pipeline.start_voice_listening()
+            
+        # Emit signal or visual feedback via action queue
+        feedback_action = {
+            'type': 'system',
+            'action': 'feedback',
+            'command': 'show_notification',
+            'title': 'Micrófono Activado',
+            'message': 'Escuchando...',
+            'duration': 2000,
+            'icon': 'mic'
+        }
+        self.action_queue.put(feedback_action)
+
+    def _deactivate_voice_mode(self):
+        """Deactivates the voice recognition mode."""
+        logger.info("🔇 Fist released -> MUTING MICROPHONE")
+        self.is_voice_active = False
+        
+        # Notify Pipeline to Stop Listening
+        if self.pipeline and hasattr(self.pipeline, 'stop_voice_listening'):
+            self.pipeline.stop_voice_listening()
+
+        # Emit signal or visual feedback via action queue
+        feedback_action = {
+            'type': 'system',
+            'action': 'feedback',
+            'command': 'show_notification',
+            'title': 'Micrófono Desactivado',
+            'message': 'Silenciado',
+            'duration': 1000,
+            'icon': 'mic_off'
+        }
+        self.action_queue.put(feedback_action)
 
 logger.info("✅ Todos los métodos faltantes han sido integrados en GestureIntegrator")

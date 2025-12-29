@@ -567,48 +567,33 @@ class MouseController:
             return
 
         try:
-            # Obtener landmarks clave (formato dict de HandDetector)
+            # Obtener landmarks clave
             index_f  = landmarks[8]
             middle_f = landmarks[12]
             thumb_f  = landmarks[4]
             ring_f   = landmarks[16]
             pinky_f  = landmarks[20]
             
-            # --- COORDENADAS EN PÍXELES (PARA DISTANCIAS PRECISAS) ---
-            # HandDetector entrega normalizadas [0..1]. Convertimos a píxeles del frame.
+            # --- COORDENADAS PARA DISTANCIAS ---
             itx, ity = int(index_f['x'] * frame_w), int(index_f['y'] * frame_h)
-            mtx, mty = int(middle_f['x'] * frame_w), int(middle_f['y'] * frame_h)
             thx, thy = int(thumb_f['x'] * frame_w), int(thumb_f['y'] * frame_h)
-            rix, riy = int(ring_f['x'] * frame_w), int(ring_f['y'] * frame_h)
-            pix, piy = int(pinky_f['x'] * frame_w), int(pinky_f['y'] * frame_h)
             
-            # --- ESTABILIZACIÓN CRÍTICA: USAR NUDILLO EN LUGAR DE PUNTA ---
-            index_mcp = landmarks[5]
-            ix_move, iy_move = index_mcp['x'], index_mcp['y']
-            
-            # --- DETECCIÓN DE CLICKS (USANDO PUNTAS EN PÍXELES) ---
-            d_it = np.hypot(itx - thx, ity - thy)
-            d_mt = np.hypot(mtx - thx, mty - thy)
+            # --- SEGUIMIENTO ESTABLE (NUDILLO) ---
+            ix_move, iy_move = landmarks[5]['x'], landmarks[5]['y']
             
             # --- CONFIGURACIÓN DE MOVIMIENTO ---
             sensitivity = self.nyx_config.sensitivity
             smooth = self.smooth_factor if self.nyx_config.smooth_movement else 1.0
             
-            # --- SEGUIMIENTO ESTABLE (NUDILLO) ---
-            # HandDetector devuelve píxeles (ix_move, iy_move). Convertimos a normalizado para scaling.
             norm_x_raw = ix_move / frame_w
             norm_y_raw = iy_move / frame_h
             
-            # --- LÓGICA DE ALCANCE (REACH) RECALIBRADA (GAMER BOOST) ---
-            # Antes: 1.0 + (sensitivity * 0.15) -> Con sens=7 daba ~2.0x (Poco para el usuario)
-            # Ahora: 1.0 + (sensitivity * 0.45) -> Con sens=7 da ~4.15x (Veloz y llega a esquinas)
-            reach_multiplier = 1.0 + (sensitivity * 0.45) 
+            # Sensibilidad ultra-alta para cubrir toda la pantalla
+            reach_multiplier = 1.0 + (sensitivity * 1.5)
             
-            # Escalamiento centrado (basado en 0.5 como centro de cámara)
             norm_x = (norm_x_raw - 0.5) * reach_multiplier + 0.5
             norm_y = (norm_y_raw - 0.5) * reach_multiplier + 0.5
             
-            # Limitar a [0.0, 1.0] para evitar salirse de pantalla
             norm_x = max(0.0, min(1.0, norm_x))
             norm_y = max(0.0, min(1.0, norm_y))
             
@@ -616,72 +601,83 @@ class MouseController:
             target_x = int(norm_x * screen_w)
             target_y = int(norm_y * screen_h)
             
-            # Estados de dedos (basados en píxeles del frame)
-            ring_down  = riy > int(landmarks[13]['y'] * frame_h)
-            pinky_down = piy > int(landmarks[17]['y'] * frame_h)
-            middle_down = mty > int(landmarks[9]['y'] * frame_h)
+            # --- ESTADOS DE DEDOS (Mano arriba = Y menor) ---
+            thumb_up  = landmarks[4]['y'] < landmarks[3]['y']
+            index_up  = landmarks[8]['y'] < landmarks[6]['y']
+            middle_up = landmarks[12]['y'] < landmarks[10]['y']
+            ring_up   = landmarks[16]['y'] < landmarks[14]['y']
+            pinky_up  = landmarks[20]['y'] < landmarks[18]['y']
             
-            # --------- PINCH DETECTION (Pellizco) ---------
-            # Thresholds en píxeles
-            PINCH_START_THRESH = 65    
-            PINCH_RELEASE_THRESH = 95  
+            fingers_extended = sum([thumb_up, index_up, middle_up, ring_up, pinky_up])
+            only_index = index_up and not (middle_up or ring_up or pinky_up)
+            open_hand = fingers_extended >= 4
             
-            # Estado físico del pellizco
-            is_physically_pinching = d_it < (PINCH_RELEASE_THRESH if self.is_dragging else PINCH_START_THRESH)
+            # Log de estado
+            if not hasattr(self, '_f_log'): self._f_log = 0
+            self._f_log += 1
+            if self._f_log % 20 == 0:
+                logger.info(f"�️ Dedos: {fingers_extended} | Dragging: {self.is_dragging} | OnlyIdx: {only_index}")
+
+            # --- LÓGICA DE MOVIMIENTO ---
+            # Mover si: mano abierta O estamos en pleno arrastre
+            should_move = open_hand or self.is_dragging
             
-            # --- FILTRO DE MOVIMIENTO: Solo si apuntamos o arrastramos ---
-            # Si d_it > 60px (abierto) y dedos abajo -> APUNTAR (POINT)
-            should_move = (d_it > 60 and ring_down and pinky_down and middle_down) or self.is_dragging
-            
-            if should_move:
+            if should_move and not getattr(self, '_freeze_cursor', False):
                 if self.nyx_config.smooth_movement:
-                    # Smoothing exponencial simple
                     final_x = self.prev_x + (target_x - self.prev_x) / smooth
                     final_y = self.prev_y + (target_y - self.prev_y) / smooth
                     self.pyautogui.moveTo(int(final_x), int(final_y))
                     self.prev_x, self.prev_y = final_x, final_y
-                    self.current_position = (int(final_x), int(final_y))
                 else:
                     self.pyautogui.moveTo(target_x, target_y)
-                    self.current_position = (target_x, target_y)
-                
                 self.stats['total_movements'] += 1
-            
-            # --------- LÓGICA UNIFICADA CLICK / DRAG (Pellizco) ---------
-            if ring_down and pinky_down:
-                if is_physically_pinching:
+
+            # --- LÓGICA DE ACCIÓN (DRAG / CLICK) ---
+            if self.is_dragging:
+                # Si estamos en drag, termina SOLO si abres la mano (4+ dedos)
+                if open_hand:
+                    self.is_dragging = False
+                    self.pyautogui.mouseUp()
+                    self._freeze_cursor = False
+                    self.pinch_start_time = None
+                    logger.info("✅ DRAG OFF (Mano Abierta)")
+                else:
+                    # DURANTE el drag, asegurar que el cursor NO se congele
+                    self._freeze_cursor = False
+            else:
+                # No estamos en drag
+                if only_index:
+                    # Congelar solo para estabilidad inicial de click/drag
+                    self._freeze_cursor = True
+                    
                     if self.pinch_start_time is None:
                         self.pinch_start_time = time.time()
+                        logger.info("👆 Iniciando timer de selección...")
                     
-                    pinch_duration = time.time() - self.pinch_start_time
-                    if pinch_duration > 0.4 and not self.is_dragging:
+                    duration = time.time() - self.pinch_start_time
+                    if duration > 0.3:
                         self.is_dragging = True
                         self.pyautogui.mouseDown()
-                        self.stats['total_drags'] += 1
-                        logger.info("🖱️ NYX DIRECT: DRAG START")
+                        self._freeze_cursor = False # Descongelar para permitir arrastre
+                        logger.info("🔥 DRAG ON - Mueve la mano para seleccionar")
                 else:
+                    # Soltamos índice antes de activar drag = CLICK
                     if self.pinch_start_time is not None:
-                        pinch_duration = time.time() - self.pinch_start_time
-                        if self.is_dragging:
-                            self.is_dragging = False
-                            self.pyautogui.mouseUp()
-                            logger.info("🖱️ NYX DIRECT: DRAG END")
-                        elif pinch_duration > 0.05:
+                        duration = time.time() - self.pinch_start_time
+                        if duration < 0.3:
                             now = time.time()
-                            if now - self.last_gesture_time > 0.2:
+                            if now - getattr(self, 'last_gesture_time', 0) > 0.2:
                                 self.pyautogui.click()
                                 self.last_gesture_time = now
                                 self.stats['total_clicks'] += 1
-                                logger.info("🖱️ NYX DIRECT: CLICK LEFT")
+                                logger.info("🖱️ CLICK")
                         self.pinch_start_time = None
-            else:
-                if self.is_dragging:
-                    self.is_dragging = False
-                    self.pyautogui.mouseUp()
-                self.pinch_start_time = None
+                        self._freeze_cursor = False
 
         except Exception as e:
-            logger.debug(f"Error en process_direct_hand: {e}")
+            logger.error(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def cleanup(self):
         """Limpia recursos para NYX."""

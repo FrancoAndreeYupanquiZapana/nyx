@@ -649,8 +649,8 @@ class MouseController:
             
             # --------- HYSTERESIS STATE FOR PINCH ---------
             # Define thresholds
-            PINCH_START_THRESH = 35
-            PINCH_RELEASE_THRESH = 60
+            PINCH_START_THRESH = 65    # Más fácil (era 35)
+            PINCH_RELEASE_THRESH = 95  # Más seguro (era 60)
             
             # Determine current pinch state based on hysteresis
             current_distance = d_it

@@ -599,9 +599,10 @@ class MouseController:
             norm_x_raw = ix_move / frame_w
             norm_y_raw = iy_move / frame_h
             
-            # --- LÓGICA DE ALCANCE (REACH) RECALIBRADA ---
-            # Un factor de 1.8 - 2.0 es perfecto para sens=7.
-            reach_multiplier = 1.0 + (sensitivity * 0.15) 
+            # --- LÓGICA DE ALCANCE (REACH) RECALIBRADA (GAMER BOOST) ---
+            # Antes: 1.0 + (sensitivity * 0.15) -> Con sens=7 daba ~2.0x (Poco para el usuario)
+            # Ahora: 1.0 + (sensitivity * 0.45) -> Con sens=7 da ~4.15x (Veloz y llega a esquinas)
+            reach_multiplier = 1.0 + (sensitivity * 0.45) 
             
             # Escalamiento centrado (basado en 0.5 como centro de cámara)
             norm_x = (norm_x_raw - 0.5) * reach_multiplier + 0.5

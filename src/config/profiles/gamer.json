@@ -8,7 +8,7 @@
       "action": "mouse",
       "command": "scroll_mode",
       "description": "Modo Scroll (Agarre)",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.5
@@ -17,7 +17,7 @@
       "action": "mouse",
       "command": "scroll_up",
       "description": "Scroll Arriba (Alt)",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.4
@@ -26,7 +26,7 @@
       "action": "mouse",
       "command": "scroll_up",
       "description": "Scroll Arriba",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.4
@@ -35,7 +35,7 @@
       "action": "mouse",
       "command": "scroll_down",
       "description": "Scroll Abajo",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.4
@@ -44,7 +44,7 @@
       "action": "mouse",
       "command": "scroll_down",
       "description": "Scroll Abajo (Alt)",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.4
@@ -53,7 +53,7 @@
       "action": "mouse",
       "command": "right_click",
       "description": "Click Derecho",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.4
@@ -62,7 +62,7 @@
       "action": "mouse",
       "command": "move",
       "description": "Controlar cursor (Índice)",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.5
@@ -71,10 +71,55 @@
       "action": "mouse",
       "command": "click",
       "description": "Click izquierdo (Pinza)",
-      "hand": "right",
+      "hand": "any",
       "type": "hand",
       "enabled": true,
       "confidence": 0.6
+    },
+    "pinch": {
+      "action": "mouse",
+      "command": "click",
+      "description": "Click (Alias)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "right_click_pinch": {
+      "action": "mouse",
+      "command": "right_click",
+      "description": "Click Derecho (Alias)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "drag_start": {
+      "action": "mouse",
+      "command": "drag_start",
+      "description": "Iniciar Arrastre",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "drag_end": {
+      "action": "mouse",
+      "command": "drag_end",
+      "description": "Soltar Arrastre",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "scroll_mode": {
+      "action": "mouse",
+      "command": "scroll",
+      "description": "Modo Scroll Dinámico",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
     }
   },
   "voice_commands": {
@@ -109,8 +154,6 @@
   "enabled_modules": [
     "hand",
     "voice",
-    "keyboard",
-    "mouse",
     "keyboard",
     "mouse",
     "window"

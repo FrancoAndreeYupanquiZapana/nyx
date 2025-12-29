@@ -662,7 +662,16 @@ class ProfileRuntime:
         with self._lock:
             if source:
                 gesture_key = f"{source}_{gesture_name}"
-                return self._gesture_cache.get(gesture_key)
+                res = self._gesture_cache.get(gesture_key)
+                if res: return res
+                
+                # Fallback: buscar por nombre y verificar fuente
+                res = self.gestures.get(gesture_name)
+                if res and res.source == source:
+                    return res
+                if res and source == "hand": # Hand is default
+                    return res
+            
             return self.gestures.get(gesture_name)
     
     def get_gesture_action(self, gesture_name: str, source: str = "hand", 
@@ -683,12 +692,15 @@ class ProfileRuntime:
             # Obtener gesto
             gesture = self.get_gesture(gesture_name, source)
             if not gesture:
+                # Log info for missing gesture
+                if gesture_name != 'hand_tracking':
+                    logger.info(f"❓ Gesto '{gesture_name}' ({source}) no encontrado en perfil")
                 return None
             
             # Verificar si puede ejecutarse
             can_execute, reason = gesture.can_execute(hand_type, confidence)
             if not can_execute:
-                logger.debug(f"⚠️ Gesto '{gesture_name}' no ejecutable: {reason}")
+                logger.info(f"⚠️ Gesto '{gesture_name}' ({source}) rechazado: {reason}")
                 return None
             
             # Crear acción

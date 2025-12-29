@@ -177,6 +177,30 @@ class VoiceRecognizer:
         
         logger.info(f"✅ VoiceRecognizer inicializado para NYX (activación: '{self.activation_word}')")
     
+    def start(self):
+        """Inicia el reconocimiento de voz."""
+        if self.is_running:
+            return
+            
+        self.is_running = True
+        self.listening_enabled = True
+        self.state = VoiceState.READY
+        logger.info("▶️ VoiceRecognizer iniciado")
+
+    def stop(self):
+        """Detiene el reconocimiento de voz de manera controlada."""
+        if not self.is_running:
+            return
+            
+        logger.info("⏹️ Deteniendo VoiceRecognizer...")
+        self.is_running = False
+        self.listening_enabled = False
+        self.state = VoiceState.DISABLED
+        
+        # En una implementación real, aquí se detendrían los hilos de escucha
+        # pero como son daemon, se cerrarán con el proceso principal.
+        # No obstante, marcamos is_running=False para que salgan de sus bucles.
+    
     def _init_speech_modules(self) -> bool:
         """Inicializa módulos de reconocimiento de voz."""
         try:

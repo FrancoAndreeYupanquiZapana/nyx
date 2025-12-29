@@ -454,6 +454,34 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 logger.error(f"❌ Error inicializando ActionExecutor: {e}")
                 raise
             
+            # 6. Gesture Integrator (CRÍTICO para coordinación y fusión de gestos)
+            try:
+                from core.gesture_integrator import GestureIntegrator
+                from interpreters.hand_interpreter import HandInterpreter
+                from interpreters.arm_interpreter import ArmInterpreter
+                
+                self.gesture_integrator = GestureIntegrator(self.config)
+                self.gesture_integrator.set_pipeline(self)
+                
+                # Registrar intérpretes especializados
+                self.gesture_integrator.register_interpreter('hand', HandInterpreter())
+                self.gesture_integrator.register_interpreter('arm', ArmInterpreter())
+                
+                # Sincronizar ActionExecutor si existe
+                if self.action_executor:
+                    self.gesture_integrator.action_executor = self.action_executor
+                    
+                # Sincronizar perfil si ya está cargado
+                if self.profile_runtime:
+                    self.gesture_integrator.set_profile_runtime(self.profile_runtime)
+                
+                components_loaded.append("GestureIntegrator")
+                logger.info("✅ GestureIntegrator inicializado y registrado intérpretes")
+            except ImportError as e:
+                logger.warning(f"⚠️ No se pudieron cargar intérpretes para integrador: {e}")
+            except Exception as e:
+                logger.error(f"❌ Error inicializando GestureIntegrator: {e}")
+            
             logger.info(f"🎮 Componentes cargados: {', '.join(components_loaded)}")
             
         except Exception as e:
@@ -687,15 +715,16 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         if len(self.gesture_history) > self.max_history:
             self.gesture_history.pop(0)
         
-        # 5. Emitir señal (Asegurar que UI tenga el nombre correcto)
+        # 5. Mapear gesto a acción usando el sistema integrado
+        action = self.process_gesture(gesture_data)
+        
+        # 6. Emitir señal (Asegurar que UI tenga el nombre correcto)
         if self.gesture_detected:
             ui_data = gesture_data.copy()
-            if 'gesture' in ui_data and 'gesture_name' not in ui_data:
-                ui_data['gesture_name'] = ui_data['gesture']
+            ui_data['gesture_name'] = gesture_name
+            if action:
+                ui_data['action_name'] = f"{action.get('type', action.get('action'))}:{action.get('command')}"
             self.gesture_detected.emit(ui_data)
-        
-        # 6. Usar el método integrado para procesar el gesto
-        action = self.process_gesture(gesture_data)
         
         if action and self.action_executor:
             try:

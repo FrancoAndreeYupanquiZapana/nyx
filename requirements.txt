@@ -1,4 +1,16 @@
+pyqt6-sip==13.10.3
+# Visión por Computadora e IA
 opencv-python
-pyautogui
+mediapipe==0.10.11
+protobuf==3.20.3
 numpy
-pyqt6
+
+# Interfaz Gráfica
+PyQt6
+
+# Control del Mouse y Automatización
+pyautogui
+
+# Desarrollo
+black     # Para formatear tu código automáticamente
+pylint    # Para encontrar errores de código

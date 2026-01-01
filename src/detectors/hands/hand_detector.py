@@ -19,8 +19,8 @@ class HandDetector:
 
         landmarks = None
 
-        if result.multi_hand_landmarks:
-            hand = result.multi_hand_landmarks[0]
+        if result.multi_hand_landmarks: # noqa
+            hand = result.multi_hand_landmarks[0] # noqa
             landmarks = hand.landmark
             self.mp_draw.draw_landmarks(frame, hand, self.mp_hands.HAND_CONNECTIONS)
 

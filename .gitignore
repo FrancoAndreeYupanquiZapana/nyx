@@ -1,4 +1,39 @@
+# Entornos virtuales
 venv/
+.venv/
+
+# Byte-compiled
 __pycache__/
 *.pyc
-recursos/model/*.pt
+*.pyo
+*.pyd
+
+# ==================== PyInstaller ====================
+build/
+dist/
+*.spec
+
+# ==================== IDEs ====================
+.idea/
+.vscode/
+
+# ==================== NYX ESPECÍFICO ====================
+# Logs
+src/logs/
+src/ui/logs/
+*.log
+
+# ==================== SISTEMA OPERATIVO ====================
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ==================== SEGURIDAD ====================
+.env
+*.key
+
+# ==================== CARPETAS GENERADAS ====================
+src/src/

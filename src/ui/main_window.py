@@ -1,5 +1,7 @@
 # src/ui/main_window.py
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
+from pathlib import Path
+
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QSystemTrayIcon, 
                              QMenu, QApplication, QGraphicsDropShadowEffect,
                              QMessageBox)
@@ -8,8 +10,8 @@ from PyQt6.QtGui import QImage, QPixmap, QIcon, QAction, QColor, QFont, QPainter
 import cv2
 import numpy as np
 import json
-import os
 import sys
+import webbrowser
 
 from detectors.hands.hand_detector import HandDetector
 from detectors.hands.hand_gestures_interpreter import HandGestureInterpreter
@@ -116,6 +118,13 @@ class MainWindow(QWidget):
 
     def setup_window(self):
         """Configura la ventana según el modo"""
+        self.setWindowTitle("Non-contact Y-coordinate eXecution")
+
+        # Ícono de la ventana
+        icon_path = Path(__file__).parent.parent.parent / "assets" / "icons" / "favicon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+
         if self.ui_mode == "hud":
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint |
                               Qt.WindowType.WindowStaysOnTopHint |
@@ -242,7 +251,7 @@ class MainWindow(QWidget):
         main_layout.setSpacing(10)
         
         # === CABECERA (arrastrable) ===
-        self.header = QLabel("🖱️ NYX - Mouse Virtual")
+        self.header = QLabel("🖱️ NYX - Control Gestual")
         self.header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header.setFixedHeight(40)
         self.header.mousePressEvent = self.mouse_press_event
@@ -302,13 +311,24 @@ class MainWindow(QWidget):
             controls_layout.addWidget(btn)
         
         main_layout.addLayout(controls_layout)
-        
-        # === BOTÓN PARA GESTOS ===
-        self.btn_show_gestures = QPushButton("📖 Mostrar Gestos")
+
+        # === BOTONES PARA GESTOS ===
+        gestures_buttons_layout = QHBoxLayout()
+
+        # === PANEL ===
+        self.btn_show_gestures = QPushButton("👁️ Ver Gestos")
         self.btn_show_gestures.clicked.connect(self.toggle_gestures_info)
         self.btn_show_gestures.setCheckable(True)
-        main_layout.addWidget(self.btn_show_gestures)
-        
+        gestures_buttons_layout.addWidget(self.btn_show_gestures)
+
+        # Botón para abrir página web
+        self.btn_open_web = QPushButton("🌐 Tutorial Web")
+        self.btn_open_web.setToolTip("Abrir guía de gestos en el navegador")
+        self.btn_open_web.clicked.connect(self.open_gestures_webpage)
+        gestures_buttons_layout.addWidget(self.btn_open_web)
+
+        main_layout.addLayout(gestures_buttons_layout)
+
         # === PANEL DE GESTOS (oculto inicialmente) ===
         self.gestures_info = QLabel()
         self.gestures_info.setWordWrap(True)
@@ -325,6 +345,10 @@ class MainWindow(QWidget):
         main_layout.addWidget(self.gestures_info)
         
         self.setLayout(main_layout)
+
+    def open_gestures_webpage(self):
+        """Abre la página de gestos en el navegador"""
+        webbrowser.open("https://lunexacorp.github.io//#/nyx/docs")
 
     def setup_connections(self):
         """Conecta las señales"""
@@ -481,8 +505,9 @@ class MainWindow(QWidget):
         visible = not self.gestures_info.isVisible()
         self.gestures_info.setVisible(visible)
         self.btn_show_gestures.setText(
-            "📖 Ocultar Gestos" if visible else "📖 Mostrar Gestos"
+            "👁️ Ocultar Gestos" if visible else "👁️ Ver Gestos"
         )
+
 
     # === CONFIGURACIÓN ===
     def save_settings(self):
@@ -594,7 +619,8 @@ class MainWindow(QWidget):
     def closeEvent(self, event):
         """Maneja el cierre"""
         self.hide()
-        event.ignore()
+        # Acepta el cierre
+        event.close()
 
     def quit_app(self):
         """Cierra completamente"""
@@ -607,7 +633,8 @@ class MainWindow(QWidget):
 # principal
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)
+    # Evita que la aplicación se cierre automáticamente cuando se cierra la última ventana
+    # app.setQuitOnLastWindowClosed(False)
     
     window = MainWindow()
     window.show()

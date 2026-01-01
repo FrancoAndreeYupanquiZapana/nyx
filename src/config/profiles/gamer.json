@@ -1,0 +1,161 @@
+{
+  "profile_name": "gamer",
+  "description": "Perfil para gaming - gestos rápidos y precisos",
+  "version": "1.0.0",
+  "author": "NYX Sistema",
+  "gestures": {
+    "fist": {
+      "action": "mouse",
+      "command": "scroll_mode",
+      "description": "Modo Scroll (Agarre)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.5
+    },
+    "victory": {
+      "action": "mouse",
+      "command": "scroll_up",
+      "description": "Scroll Arriba (Alt)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "thumbs_up": {
+      "action": "mouse",
+      "command": "scroll_up",
+      "description": "Scroll Arriba",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "thumbs_down": {
+      "action": "mouse",
+      "command": "scroll_down",
+      "description": "Scroll Abajo",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "rock": {
+      "action": "mouse",
+      "command": "scroll_down",
+      "description": "Scroll Abajo (Alt)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "call_me": {
+      "action": "mouse",
+      "command": "right_click",
+      "description": "Click Derecho",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "point": {
+      "action": "mouse",
+      "command": "move",
+      "description": "Controlar cursor (Índice)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.5
+    },
+    "ok": {
+      "action": "mouse",
+      "command": "click",
+      "description": "Click izquierdo (Pinza)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    },
+    "pinch": {
+      "action": "mouse",
+      "command": "click",
+      "description": "Click (Alias)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "right_click_pinch": {
+      "action": "mouse",
+      "command": "right_click",
+      "description": "Click Derecho (Alias)",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "drag_start": {
+      "action": "mouse",
+      "command": "drag_start",
+      "description": "Iniciar Arrastre",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "drag_end": {
+      "action": "mouse",
+      "command": "drag_end",
+      "description": "Soltar Arrastre",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    },
+    "scroll_mode": {
+      "action": "mouse",
+      "command": "scroll",
+      "description": "Modo Scroll Dinámico",
+      "hand": "any",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.4
+    }
+  },
+  "voice_commands": {
+    "nyx abre discord": {
+      "action": "window",
+      "command": "activate",
+      "window": "discord",
+      "description": "Activar ventana de Discord",
+      "enabled": true
+    },
+    "nyx captura pantalla": {
+      "action": "keyboard",
+      "command": "win+printscreen",
+      "description": "Tomar screenshot",
+      "enabled": true
+    },
+    "nyx abre chrome": {
+      "action": "window",
+      "command": "activate",
+      "window": "chrome",
+      "description": "Abrir Google Chrome",
+      "enabled": true
+    }
+  },
+  "settings": {
+    "mouse_sensitivity": 1.5,
+    "keyboard_delay": 0.1,
+    "gesture_cooldown": 0.3,
+    "sensitivity": 7,
+    "response_time": 0.3
+  },
+  "enabled_modules": [
+    "hand",
+    "voice",
+    "keyboard",
+    "mouse",
+    "window"
+  ]
+}

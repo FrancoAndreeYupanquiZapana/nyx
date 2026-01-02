@@ -17,11 +17,11 @@ dist/
 .idea/
 .vscode/
 
-# ==================== NYX ESPECÍFICO ====================
-# Logs
+# ==================== Logs ====================
 src/logs/
 src/ui/logs/
 *.log
+logs/
 
 # ==================== SISTEMA OPERATIVO ====================
 # Windows

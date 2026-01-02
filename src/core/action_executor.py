@@ -77,7 +77,7 @@ class ActionExecutor:
             # 🎮 Teclado
             if controller_configs.get('keyboard', {}).get('enabled', True):
                 try:
-                    from src.controllers.keyboard_controller import KeyboardController
+                    from controllers.keyboard_controller import KeyboardController
                     self.controllers['keyboard'] = KeyboardController()
                     logger.info("✅ KeyboardController inicializado")
                     self._run_callbacks('on_controller_initialized', 'keyboard')
@@ -88,7 +88,7 @@ class ActionExecutor:
             # 🖱️ Mouse
             if controller_configs.get('mouse', {}).get('enabled', True):
                 try:
-                    from src.controllers.mouse_controller import MouseController
+                    from controllers.mouse_controller import MouseController
                     # Crear configuración simulada para el controlador
                     mouse_config = self.config.copy()
                     if 'mouse_settings' not in mouse_config:
@@ -105,7 +105,7 @@ class ActionExecutor:
             # 🪟 Ventanas
             if controller_configs.get('window', {}).get('enabled', True):
                 try:
-                    from src.controllers.window_controller import WindowController
+                    from controllers.window_controller import WindowController
                     self.controllers['window'] = WindowController()
                     logger.info("✅ WindowController inicializado")
                     self._run_callbacks('on_controller_initialized', 'window')
@@ -116,7 +116,7 @@ class ActionExecutor:
             # 💻 Bash
             if controller_configs.get('bash', {}).get('enabled', False):
                 try:
-                    from src.controllers.bash_controller import BashController
+                    from controllers.bash_controller import BashController
                     self.controllers['bash'] = BashController()
                     logger.info("✅ BashController inicializado")
                     self._run_callbacks('on_controller_initialized', 'bash')

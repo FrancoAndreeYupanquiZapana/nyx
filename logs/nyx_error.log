@@ -16149,3 +16149,4 @@ TypeError: DirectMouseControl.__init__() takes 1 positional argument but 2 were 
 23:00:55 - NYX - [31mERROR[0m - Error guardando configuración de controladores: 'ConfigLoader' object has no attribute 'update_settings'
 23:00:55 - NYX - [31mERROR[0m - Error guardando configuración: 'ConfigLoader' object has no attribute 'update_settings'
 03:16:12 - NYX - [33mWARNING[0m - Recibida señal 2. Cerrando NYX...
+21:17:35 - NYX - [33mWARNING[0m - 📷 Cámara 0 no responde

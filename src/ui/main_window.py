@@ -8,6 +8,7 @@ Controla todo el sistema de control por gestos.
 import sys
 import time
 import cv2
+import webbrowser
 from typing import Dict, Any, Optional
 from pathlib import Path
 
@@ -540,7 +541,7 @@ class MainWindow(QMainWindow):
         # Panel derecho (controles)
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        
+
         # Selector de perfil
         self.profile_selector = ProfileSelector()
         right_layout.addWidget(self.profile_selector)
@@ -1390,7 +1391,9 @@ class MainWindow(QMainWindow):
     
     def _show_docs(self):
         """Muestra la documentación."""
-        QMessageBox.information(self, "Documentación", "Función en desarrollo...")
+        url = "https://lunexacorp.github.io/#/nyx/docs"
+        webbrowser.open(url)
+        # QMessageBox.information(self, "Documentación", "Función en desarrollo...")
     
     def _check_updates(self):
         """Busca actualizaciones."""

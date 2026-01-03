@@ -1,8 +1,36 @@
+# Entornos virtuales
 venv/
+.venv/
+
+# Byte-compiled
 __pycache__/
 *.pyc
-recursos/model/*.pt
-workspace/
+*.pyo
+*.pyd
+
+# PyInstaller
 build/
 dist/
+*.spec
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs and Debug
+*.log
+workspace/
 .pytest_cache/
+
+# SISTEMA OPERATIVO
+Thumbs.db
+Desktop.ini
+*~
+
+# SEGURIDAD
+.env
+*.key
+
+# Otros
+recursos/model/*.pt
+src/src/

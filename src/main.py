@@ -175,8 +175,13 @@ class InitializationWorker(QThread):
     
     def _check_directories(self):
         """Verifica directorios necesarios."""
-        directories = ["logs", "config", "profiles"]
-        for directory in directories:
+        # Directorios en workspace para datos generados
+        workspace_dirs = ["workspace/logs", "workspace/backups", "workspace/exports", 
+                          "workspace/recorded_gestures", "workspace/training_data"]
+        # Directorios en src para configuración
+        config_dirs = ["src/config", "src/config/profiles"]
+        
+        for directory in workspace_dirs + config_dirs:
             path = Path(directory)
             if not path.exists():
                 path.mkdir(parents=True, exist_ok=True)
@@ -214,7 +219,7 @@ class NYXApplication:
         # Primero crear logger básico para startup
         self.logger = NYXLogger(
             app_name="NYX",
-            log_dir="logs",
+            log_dir="workspace/logs",
             level="INFO",
             console=True,
             colors=True
@@ -236,14 +241,14 @@ class NYXApplication:
         return self.config_loader
     
     def _check_directories(self):
-        """Verifica y crea la estructura de directorios de NYX."""
+        """Verifica y crea la estructura de directorios de NYX en workspace."""
         directories = [
-            "logs",
-            "recorded_gestures",
-            "exports",
-            "backups",
-            "training_data",
-            "profiles"
+            "workspace/logs",
+            "workspace/recorded_gestures",
+            "workspace/exports",
+            "workspace/backups",
+            "workspace/training_data",
+            "src/config/profiles"
         ]
         
         for directory in directories:

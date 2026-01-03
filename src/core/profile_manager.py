@@ -95,9 +95,9 @@ class ProfileManager:
         # Intentar diferentes rutas en orden de prioridad
         possible_paths = [
             Path("src/config/profiles"),           # Estructura estándar
-            Path("config/profiles"),                # Alternativa
-            Path("profiles"),                       # Raíz del proyecto
-            Path.home() / ".config" / "nyx" / "profiles"  # Config global
+            Path.cwd() / "src" / "config" / "profiles", # Ruta absoluta desde CWD
+            Path(__file__).parent.parent / "config" / "profiles", # Relativo a core/
+            Path.home() / ".config" / "nyx" / "profiles"  # Config global (opcional)
         ]
         
         for path in possible_paths:

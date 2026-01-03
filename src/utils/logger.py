@@ -31,7 +31,7 @@ class NYXLogger:
     
     def __init__(self, 
                  app_name: str = "NYX",
-                 log_dir: str = "logs",
+                 log_dir: str = "workspace/logs",
                  level: str = "INFO",
                  console: bool = True,
                  colors: bool = True):
@@ -407,7 +407,7 @@ class NYXLogger:
 
 _nyx_logger = NYXLogger(
     app_name="NYX",
-    log_dir="logs",
+    log_dir="workspace/logs",
     level="INFO",
     console=True,
     colors=True

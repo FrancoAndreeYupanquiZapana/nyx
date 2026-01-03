@@ -105,7 +105,7 @@ class GestureRecorder:
     """
     
     def __init__(self, 
-                 output_dir: Union[str, Path] = "recorded_gestures",
+                 output_dir: Union[str, Path] = "workspace/recorded_gestures",
                  config: Optional[Dict[str, Any]] = None,
                  auto_cleanup: bool = False):
         """

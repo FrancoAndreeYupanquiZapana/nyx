@@ -8,32 +8,29 @@ __pycache__/
 *.pyo
 *.pyd
 
-# ==================== PyInstaller ====================
+# PyInstaller
 build/
 dist/
 *.spec
 
-# ==================== IDEs ====================
+# IDEs
 .idea/
 .vscode/
 
-# ==================== Logs ====================
-src/logs/
-src/ui/logs/
+# Logs and Debug
 *.log
-logs/
+workspace/
+.pytest_cache/
 
-# ==================== SISTEMA OPERATIVO ====================
-# Windows
+# SISTEMA OPERATIVO
 Thumbs.db
 Desktop.ini
-
-# Linux
 *~
 
-# ==================== SEGURIDAD ====================
+# SEGURIDAD
 .env
 *.key
 
-# ==================== CARPETAS GENERADAS ====================
+# Otros
+recursos/model/*.pt
 src/src/

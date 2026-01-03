@@ -167,7 +167,7 @@ class Theme:
     
     def _load_custom_fonts(self):
         """Carga fuentes personalizadas desde archivos."""
-        font_dir = os.path.join(os.path.dirname(__file__), '..', 'assets', 'fonts')
+        font_dir = os.path.join(os.path.dirname(__file__), 'assets', 'fonts')
         
         if os.path.exists(font_dir):
             for font_file in os.listdir(font_dir):
@@ -527,7 +527,7 @@ class DarkTheme(Theme):
             'QCheckBox::indicator:checked': f"""
                 background-color: {self.colors['primary']};
                 border: 2px solid {self.colors['primary']};
-                image: url(assets/icons/check.svg);
+                image: url(src/assets/icons/check.svg);
             """,
             
             'QCheckBox::indicator:disabled': f"""
@@ -570,7 +570,7 @@ class DarkTheme(Theme):
             """,
             
             'QComboBox::down-arrow': f"""
-                image: url(assets/icons/arrow-down.svg);
+                image: url(src/assets/icons/arrow-down.svg);
                 width: 16px;
                 height: 16px;
             """,

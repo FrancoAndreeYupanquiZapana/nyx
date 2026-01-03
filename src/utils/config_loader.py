@@ -59,12 +59,10 @@ class ConfigLoader:
             Path.cwd() / "src" / "config",
             # 2. Desde Nyx/src/ (estructura del proyecto)
             Path.cwd().parent / "src" / "config" if "Nyx" in str(Path.cwd()) else None,
-            # 3. Relativo al archivo actual
+            # 3. Relativo al archivo actual (si está en src/utils)
             Path(__file__).parent.parent / "config",
-            # 4. Config en raíz del proyecto
-            Path.cwd() / "config",
-            # 5. Crear nuevo en src/config
-            Path.cwd() / "src" / "config"
+            # 4. Config en src/config (fallback seguro)
+            Path.cwd() / "src" / "config",
         ]
         
         # Filtrar paths None y verificar existencia
@@ -75,8 +73,8 @@ class ConfigLoader:
                 logger.debug(f"✅ Directorio de configuración encontrado: {path}")
                 return path
         
-        # Si no existe, crear el último path válido
-        default_path = valid_paths[-1] if valid_paths else Path.cwd() / "config"
+        # Si no existe, crear el path estándar en src/
+        default_path = Path.cwd() / "src" / "config"
         logger.info(f"📁 Creando directorio de configuración: {default_path}")
         return default_path
     

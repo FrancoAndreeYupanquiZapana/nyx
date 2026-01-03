@@ -11,7 +11,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (mediapipe_path, 'mediapipe'),
-        ('assets', 'assets'),
+        ('src/assets', 'assets'),
         ('src/config', 'config'),
     ],
     hiddenimports=[
@@ -60,5 +60,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     uac_admin=True, # MANTENER ADMIN RIGHTS PARA CLICS
-    icon=['assets\\nyx.ico'],
+    icon=['src\\assets\\nyx.ico'],
 )

@@ -1,7 +1,67 @@
 {
   "profile_name": "custom",
   "description": "Perfil personalizado",
-  "gestures": {},
-  "voice_commands": {},
-  "settings": {}
+  "version": "1.0.0",
+  "author": "Sistema",
+  "gestures": {
+    "fist": {
+      "action": "keyboard",
+      "command": "space",
+      "description": "Saltar/Disparar",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.7
+    },
+    "peace": {
+      "action": "keyboard",
+      "command": "r",
+      "description": "Recargar",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.7
+    },
+    "thumbs_up": {
+      "action": "keyboard",
+      "command": "e",
+      "description": "Interactuar",
+      "hand": "right",
+      "type": "hand",
+      "enabled": true,
+      "confidence": 0.6
+    }
+  },
+  "voice_commands": {
+    "nyx screenshot": {
+      "action": "bash",
+      "command": "gnome-screenshot -a",
+      "description": "Tomar screenshot",
+      "enabled": true
+    },
+    "nyx mute": {
+      "action": "bash",
+      "command": "amixer set Master mute",
+      "description": "Silenciar audio",
+      "enabled": true
+    },
+    "nyx volume up": {
+      "action": "bash",
+      "command": "amixer set Master 5%+",
+      "description": "Subir volumen",
+      "enabled": true
+    },
+    "nyx volume down": {
+      "action": "bash",
+      "command": "amixer set Master 5%-",
+      "description": "Bajar volumen",
+      "enabled": true
+    }
+  },
+  "settings": {
+    "mouse_sensitivity": 1.5,
+    "keyboard_delay": 0.1,
+    "gesture_cooldown": 0.3
+  },
+  "enabled_modules": []
 }

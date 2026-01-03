@@ -32,8 +32,9 @@ from ui.styles import get_color, get_font
 from utils.logger import logger
 #from utils.config_loader import config
 from utils.config_loader import ConfigLoader
-from core.profile_manager import ProfileManager
+from core.profile_manager import ProfileManager, ProfileData
 from core.gesture_pipeline import GesturePipeline
+from tools.profile_creator import SimpleProfileCreator
 
 
 class ProfileEditorWidget(QWidget):
@@ -755,64 +756,64 @@ class ProfileManagerWindow(QDialog):
         self.status_bar.setText("⚠ Cambios sin guardar")
     
     def _create_profile(self):
-        """Crea un nuevo perfil."""
-        name, ok = QInputDialog.getText(
-            self, 
-            "📄 Nuevo Perfil",
-            "Nombre del nuevo perfil:",
-            QLineEdit.EchoMode.Normal,
-            "nuevo_perfil"
-        )
-        
-        if ok and name:
-            # Verificar si ya existe
-            if name in self.profile_manager.list_profiles():
-                QMessageBox.warning(
-                    self,
-                    "Perfil existente",
-                    f"El perfil '{name}' ya existe. Usa otro nombre."
-                )
-                return
+        """Crear nuevo perfil usando el Creador Simple."""
+        try:
+            # Instanciar creador en modo CREAR
+            dialog = SimpleProfileCreator(self)
             
-            # Crear perfil básico
-            profile_data = {
-                'profile_name': name,
-                'description': 'Nuevo perfil personalizado',
-                'version': '1.0.0',
-                'author': 'Usuario',
-                'gestures': {},
-                'voice_commands': {},
-                'settings': {
-                    'mouse_sensitivity': 1.5,
-                    'keyboard_delay': 0.1,
-                    'gesture_cooldown': 0.3
-                },
-                'enabled_modules': ['hand', 'voice', 'keyboard', 'mouse'],
-                'created_at': time.strftime("%Y-%m-%d %H:%M:%S"),
-                'last_modified': time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
-            # Guardar perfil
-            self.profile_manager.save_profile(name, profile_data)
-            
-            # Recargar lista
-            self._load_profiles()
-            
-            # Seleccionar nuevo perfil
-            items = self.profile_list.findItems(name, Qt.MatchFlag.MatchExactly)
-            if items:
-                self.profile_list.setCurrentItem(items[0])
-            
-            self.status_bar.setText(f"✅ Perfil '{name}' creado")
-            self.profile_saved.emit(name)
-            
-            logger.info(f"📄 Nuevo perfil creado: {name}")
+            # Ejecutar modal
+            if dialog.exec():
+                # Si se creó correctamente, recargar lista
+                self._load_profiles()
+                
+                # Seleccionar el nuevo perfil (el nombre viene en la señal o lo sacamos del dialog)
+                new_name = dialog.name_input.text()
+                
+                # Buscar y seleccionar en la lista
+                items = self.profile_list.findItems(new_name, Qt.MatchFlag.MatchExactly)
+                if items:
+                    self.profile_list.setCurrentItem(items[0])
+                    
+                self.status_bar.showMessage(f"Perfil '{new_name}' creado exitosamente", 3000)
+                
+        except Exception as e:
+            logger.error(f"Error creando perfil: {e}")
+            QMessageBox.critical(self, "Error", f"Error al abrir el creador de perfiles:\n{e}")
     
     def _edit_profile(self):
-        """Habilita la edición del perfil seleccionado."""
-        if self.current_profile:
-            self.btn_edit.setEnabled(False)
-            self.status_bar.setText(f"✏️ Editando perfil '{self.current_profile}'")
+        """Abre el editor avanzado de perfiles (Creador Simple en modo Edición)."""
+        if not self.current_profile:
+            return
+            
+        try:
+            # Obtener datos actuales
+            current_data = self.profile_manager.get_profile_data(self.current_profile)
+            if not current_data:
+                QMessageBox.warning(self, "Error", "No se pudieron cargar los datos del perfil.")
+                return
+                
+            # Instanciar creador en modo EDICIÓN
+            dialog = SimpleProfileCreator(self, edit_mode=True)
+            
+            # Cargar datos
+            dialog.load_profile_data(current_data)
+            
+            # Ejecutar modal
+            if dialog.exec():
+                # Recargar lista y detalles
+                self._load_profiles()
+                
+                # Reseleccionar
+                items = self.profile_list.findItems(self.current_profile, Qt.MatchFlag.MatchExactly)
+                if items:
+                    self.profile_list.setCurrentItem(items[0])
+                    
+                self._load_profile_details(self.current_profile)
+                self.status_bar.showMessage(f"Perfil '{self.current_profile}' actualizado", 3000)
+                
+        except Exception as e:
+            logger.error(f"Error editando perfil: {e}")
+            QMessageBox.critical(self, "Error", f"Error al abrir el editor de perfiles:\n{e}")
     
     def _save_profile(self):
         """Guarda los cambios del perfil editado."""
@@ -836,7 +837,20 @@ class ProfileManagerWindow(QDialog):
                 
                 if reply == QMessageBox.StandardButton.Yes:
                     # Guardar como nuevo perfil
-                    self.profile_manager.save_profile(profile_name, profile_data)
+                    # Crear nuevo objeto ProfileData
+                    new_profile_obj = ProfileData(
+                        profile_name=profile_name,
+                        description=profile_data.get('description', ''),
+                        version='1.0.0',
+                        author=profile_data.get('author', ''),
+                        gestures=profile_data.get('gestures', {}),
+                        voice_commands=profile_data.get('voice_commands', {}),
+                        settings=profile_data.get('settings', {}),
+                        enabled_modules=profile_data.get('enabled_modules', [])
+                    )
+                    
+                    # Guardar como nuevo perfil
+                    self.profile_manager.save_profile(new_profile_obj)
                     
                     # Recargar lista
                     self._load_profiles()
@@ -856,7 +870,20 @@ class ProfileManagerWindow(QDialog):
             profile_data['last_modified'] = time.strftime("%Y-%m-%d %H:%M:%S")
             
             # Guardar perfil (actualización)
-            self.profile_manager.save_profile(self.current_profile, profile_data)
+            # Crear objeto ProfileData actualizado
+            # Obtener datos base del perfil original para mantener campos que no están en la UI si los hubiera
+            current_profile_obj = self.profile_manager.get_profile(self.current_profile)
+            if current_profile_obj:
+                # Actualizar campos
+                current_profile_obj.description = profile_data.get('description', '')
+                current_profile_obj.author = profile_data.get('author', '')
+                current_profile_obj.settings = profile_data.get('settings', {})
+                current_profile_obj.enabled_modules = profile_data.get('enabled_modules', [])
+                current_profile_obj.gestures = profile_data.get('gestures', {})
+                current_profile_obj.voice_commands = profile_data.get('voice_commands', {})
+                
+                # Guardar perfil (actualización)
+                self.profile_manager.save_profile(current_profile_obj)
             
             # Actualizar estado
             self.has_unsaved_changes = False
@@ -906,7 +933,20 @@ class ProfileManagerWindow(QDialog):
             profile_data['profile_name'] = new_name
             
             # Guardar como nuevo perfil
-            self.profile_manager.save_profile(new_name, profile_data)
+            # Crear nuevo objeto ProfileData
+            new_profile_obj = ProfileData(
+                profile_name=new_name,
+                description=profile_data.get('description', ''),
+                version='1.0.0',
+                author=profile_data.get('author', ''),
+                gestures=profile_data.get('gestures', {}),
+                voice_commands=profile_data.get('voice_commands', {}),
+                settings=profile_data.get('settings', {}),
+                enabled_modules=profile_data.get('enabled_modules', [])
+            )
+            
+            # Guardar como nuevo perfil
+            self.profile_manager.save_profile(new_profile_obj)
             
             # Recargar lista
             self._load_profiles()

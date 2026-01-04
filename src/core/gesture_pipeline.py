@@ -253,6 +253,7 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         pipeline_started = pyqtSignal()               # Pipeline iniciado
         pipeline_stopped = pyqtSignal()               # Pipeline detenido
         voice_event = pyqtSignal(str, dict)           # Eventos de voz
+        quick_menu_requested = pyqtSignal(str)        # Quick menu solicitado (OS del perfil)
     else:
         # Placeholders cuando PyQt6 no está disponible
         gesture_detected = None
@@ -266,12 +267,13 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         pipeline_stopped = None
         voice_event = None
     
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: Dict = None, config_loader=None):
         """
         Inicializa el pipeline de NYX.
         
         Args:
             config: Configuración del sistema
+            config_loader: Cargador de configuración (opcional)
         """
         # Inicializar integración primero
         GesturePipelineIntegration.__init__(self)
@@ -283,6 +285,7 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         
         # Configuración
         self.config = config or {}
+        self.config_loader = config_loader
         
         # Estado del pipeline
         self.is_running = False
@@ -352,12 +355,12 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         # Temporizador para estadísticas
         self._stats_timer = None
         
+        # Inicializar componentes
+        self._init_components()
+        
         # Cargar perfil por defecto desde configuración
         default_profile = self.config.get('active_profile', 'gamer')
         self.load_profile(default_profile)
-        
-        # Inicializar componentes
-        self._init_components()
         
         # Emitir señal de inicialización
         self._emit_status("initialized", {"config": self.config})
@@ -372,14 +375,17 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         
         try:
             # 1. Config Loader
-            try:
-                from utils.config_loader import ConfigLoader
-                self.config_loader = ConfigLoader()
-                components_loaded.append("ConfigLoader")
-                logger.debug("✅ ConfigLoader cargado")
-            except ImportError as e:
-                logger.warning(f"⚠️ No se pudo cargar ConfigLoader: {e}")
-                self.config_loader = None
+            if not self.config_loader:
+                try:
+                    from utils.config_loader import ConfigLoader
+                    self.config_loader = ConfigLoader()
+                    components_loaded.append("ConfigLoader")
+                    logger.debug("✅ ConfigLoader cargado")
+                except ImportError as e:
+                    logger.warning(f"⚠️ No se pudo cargar ConfigLoader: {e}")
+                    self.config_loader = None
+            else:
+                components_loaded.append("ConfigLoader (externo)")
             
             # 2. Hand Detector
             try:
@@ -715,7 +721,24 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         if len(self.gesture_history) > self.max_history:
             self.gesture_history.pop(0)
         
-        # 5. Mapear gesto a acción usando el sistema integrado
+        # 5. Verificar si es el gesto del quick menu
+        if self.profile_runtime:
+            quick_menu_enabled = getattr(self.profile_runtime, 'quick_menu_enabled', False)
+            quick_menu_gesture = getattr(self.profile_runtime, 'quick_menu_gesture', 'both_hands_open')
+            
+            logger.debug(f"🔍 Quick Menu check: gesture={gesture_name}, enabled={quick_menu_enabled}, expected={quick_menu_gesture}")
+            
+            if quick_menu_enabled and gesture_name == quick_menu_gesture:
+                logger.info(f"⚡⚡⚡ QUICK MENU ACTIVADO! Gesto: {gesture_name}")
+                if self.quick_menu_requested:
+                    profile_os = getattr(self.profile_runtime, 'os_type', 'any')
+                    logger.info(f"📡 Emitiendo señal quick_menu_requested con OS: {profile_os}")
+                    self.quick_menu_requested.emit(profile_os)
+                else:
+                    logger.warning("⚠️ quick_menu_requested signal is None!")
+                return  # No procesar como acción normal
+        
+        # 6. Mapear gesto a acción usando el sistema integrado
         action = self.process_gesture(gesture_data)
         
         # 6. Emitir señal (Asegurar que UI tenga el nombre correcto)
@@ -820,16 +843,29 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
             
             if self.config_loader:
                 profile_data = self.config_loader.get_profile(profile_name)
-            else:
-                # Fallback: cargar directamente desde archivo
+            
+            # Fallback si falla el loader o no hay profile_data
+            if not profile_data:
+                # Fallback: cargar directamente desde archivo con path absoluto robusto
                 import json
-                import os
-                profiles_dir = os.path.join('src', 'config', 'profiles')
-                profile_path = os.path.join(profiles_dir, f"{profile_name}.json")
+                from pathlib import Path
                 
-                if os.path.exists(profile_path):
+                # Intentar ruta relativa a este archivo
+                current_file_path = Path(__file__).resolve()
+                profiles_dir = current_file_path.parent.parent / "config" / "profiles"
+                profile_path = profiles_dir / f"{profile_name}.json"
+                
+                if profile_path.exists():
+                    logger.info(f"📁 Cargando perfil desde fallback directo: {profile_path}")
                     with open(profile_path, 'r', encoding='utf-8') as f:
                         profile_data = json.load(f)
+                else:
+                    # Segundo intento: CWD
+                    cwd_profile = Path.cwd() / "src" / "config" / "profiles" / f"{profile_name}.json"
+                    if cwd_profile.exists():
+                        logger.info(f"📁 Cargando perfil desde fallback CWD: {cwd_profile}")
+                        with open(cwd_profile, 'r', encoding='utf-8') as f:
+                            profile_data = json.load(f)
             
             if not profile_data:
                 error_msg = f"Perfil no encontrado: {profile_name}"
@@ -880,6 +916,13 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                     active_gestures = self.profile_runtime.get_all_gestures()
                     self.hand_detector.set_active_gestures(active_gestures)
                     logger.info(f"✅ {len(active_gestures)} gestos configurados en HandDetector")
+                    
+                    # Cache del gesto de movimiento para optimizar el loop
+                    if hasattr(self.profile_runtime, 'get_movement_gesture_name'):
+                        self._current_move_gesture = self.profile_runtime.get_movement_gesture_name()
+                        logger.info(f"📍 Gesto de movimiento detectado en perfil: {self._current_move_gesture}")
+                    else:
+                        self._current_move_gesture = None
                 except Exception as e:
                     logger.warning(f"⚠️ Error configurando gestos en HandDetector: {e}")
             
@@ -1152,14 +1195,25 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 
                 if cap.isOpened():
                     print("DEBUG_PRINT: Camera opened successfully")
-                    # Configurar propiedades
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                    cap.set(cv2.CAP_PROP_FPS, fps_target)
+                    # Configurar propiedades (con precaución en Windows)
+                    try:
+                        print("DEBUG_PRINT: Setting camera properties...")
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                        # Omitir FPS en DSHOW si es problemático
+                        if os.name != 'nt':
+                            cap.set(cv2.CAP_PROP_FPS, fps_target)
+                        print("DEBUG_PRINT: Properties set attempt finished")
+                    except Exception as pe:
+                        print(f"DEBUG_PRINT: Error setting camera properties (non-fatal): {pe}")
                     
-                    actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                    try:
+                        actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                        print(f"DEBUG_PRINT: Actual res: {actual_width}x{actual_height} @ {actual_fps}")
+                    except:
+                        actual_width, actual_height, actual_fps = width, height, fps_target
                     
                     self._camera_active = True
                     
@@ -1242,13 +1296,19 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
                 if self.action_executor and hasattr(self.action_executor, 'controllers'):
                     mouse = self.action_executor.controllers.get('mouse')
                     if mouse and processed_data.get('landmarks'):
-                        # ========== OPCIÓN NUCLEAR: SIEMPRE PROCESAR SI HAY MANO ==========
-                        # Bypass completo de filtros de gestos
-                        logger.info("🟢 MANO DETECTADA - PROCESANDO MOUSE")
+                        # Identificar si el gesto de MOVIMIENTO activo está presente
+                        # Esto permite que perfiles como 'rutly' usen 'fist' para mover
+                        can_move = False
+                        if hasattr(self, '_current_move_gesture') and self._current_move_gesture:
+                            active_gests = [g.get('gesture') for g in processed_data.get('gestures', [])]
+                            if self._current_move_gesture in active_gests:
+                                can_move = True
+                        
+                        logger.info(f"🟢 MANO DETECTADA - PROCESANDO MOUSE (MoveFlag: {can_move})")
                         for hand_landmarks in processed_data['landmarks']:
                             if hand_landmarks:
                                 h, w = frame.shape[:2]
-                                mouse.process_direct_hand(hand_landmarks, w, h)
+                                mouse.process_direct_hand(hand_landmarks, w, h, external_move_flag=can_move)
                                 break  # Solo procesar la primera mano
                 
                 frame_count += 1

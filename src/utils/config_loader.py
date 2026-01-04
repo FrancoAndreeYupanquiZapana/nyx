@@ -54,15 +54,13 @@ class ConfigLoader:
             Path al directorio de configuración
         """
         # Posibles ubicaciones (en orden de prioridad)
+        # 1. Relativo al archivo actual (ubicación más segura: src/utils/config_loader.py -> src/config)
+        src_dir = Path(__file__).resolve().parent.parent
+        
         possible_paths = [
-            # 1. Desde src/ (ejecutando desde raíz del proyecto)
+            src_dir / "config",
             Path.cwd() / "src" / "config",
-            # 2. Desde Nyx/src/ (estructura del proyecto)
-            Path.cwd().parent / "src" / "config" if "Nyx" in str(Path.cwd()) else None,
-            # 3. Relativo al archivo actual (si está en src/utils)
-            Path(__file__).parent.parent / "config",
-            # 4. Config en src/config (fallback seguro)
-            Path.cwd() / "src" / "config",
+            Path.cwd() / "config",
         ]
         
         # Filtrar paths None y verificar existencia

@@ -36,6 +36,8 @@ pygetwindow==0.0.9
 # Reconocimiento de voz
 SpeechRecognition==3.10.0
 pyaudio==0.2.13
+faster-whisper==1.0.1
+huggingface_hub
 
 # Configuración
 PyYAML==6.0.1

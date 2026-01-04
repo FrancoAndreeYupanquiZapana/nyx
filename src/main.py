@@ -265,7 +265,12 @@ class NYXApplication:
             system_config = self.config_loader.get_system_config()
             camera_id = system_config.get('camera', {}).get('device_id', 0)
             
-            cap = cv2.VideoCapture(camera_id)
+            # Windows fix: use DirectShow specifically
+            if os.name == 'nt':
+                cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(camera_id)
+                
             if cap.isOpened():
                 ret, frame = cap.read()
                 cap.release()
@@ -290,7 +295,7 @@ class NYXApplication:
         
         try:
             # 1. Crear pipeline base
-            pipeline = GesturePipeline(system_config)
+            pipeline = GesturePipeline(system_config, config_loader=self.config_loader)
             
             # 2. Crear GestureIntegrator
             integrator = GestureIntegrator(system_config)
@@ -369,7 +374,8 @@ class NYXApplication:
             profile_data = self.config_loader.get_profile(active_profile)
             
             if profile_data:
-                pipeline.load_profile(profile_data)
+                # IMPORTANT: load_profile expects the profile NAME string
+                pipeline.load_profile(active_profile)
                 self.logger.info(f"👤 Perfil cargado: {active_profile}")
             else:
                 self.logger.warning(f"⚠️ No se pudo cargar perfil: {active_profile}")
@@ -580,7 +586,8 @@ class NYXApplication:
             
             # 12. Conectar gestor de perfiles
             if hasattr(self.main_window, 'set_profile_manager'):
-                self.main_window.set_profile_manager(self.config_loader)
+                from core.profile_manager import ProfileManager
+                self.main_window.set_profile_manager(ProfileManager())
             
             # 13. Configurar integración con ConfigWindow
             self._setup_config_window_integration()

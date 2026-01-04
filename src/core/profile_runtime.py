@@ -179,6 +179,7 @@ class ProfileRuntime:
         self.description = "Perfil por defecto"
         self.version = "1.0.0"
         self.author = "NYX Sistema"
+        self.os_type = "any"     # windows, linux, any
         self.file_path = None
         
         # Estructura del perfil
@@ -186,6 +187,11 @@ class ProfileRuntime:
         self.voice_commands: Dict[str, VoiceCommandConfig] = {}  # Comandos de voz
         self.settings: Dict[str, Any] = {}                    # Configuración
         self.enabled_modules: List[str] = []                  # Módulos habilitados
+        
+        # Quick Menu configuration
+        self.quick_menu_enabled: bool = True
+        self.quick_menu_gesture: str = "both_hands_open"
+        self.quick_menu_favorites: List[str] = []
         
         # Callbacks para integración
         self.on_profile_changed: Optional[Callable] = None    # Callback cuando cambia el perfil
@@ -298,6 +304,13 @@ class ProfileRuntime:
                 self.description = profile_data.get('description', self.description)
                 self.version = profile_data.get('version', self.version)
                 self.author = profile_data.get('author', self.author)
+                self.os_type = profile_data.get('os_type', 'any')
+                
+                # Quick Menu configuration
+                quick_menu_data = profile_data.get('quick_menu', {})
+                self.quick_menu_enabled = quick_menu_data.get('enabled', True)
+                self.quick_menu_gesture = quick_menu_data.get('gesture', 'both_hands_open')
+                self.quick_menu_favorites = quick_menu_data.get('favorite_scripts', [])
                 
                 # 2. Cargar gestos con validación
                 raw_gestures = profile_data.get('gestures', {})
@@ -759,6 +772,24 @@ class ProfileRuntime:
             
             return best_match
     
+    def get_all_gestures(self) -> List[str]:
+        """
+        Obtiene los nombres de todos los gestos habilitados en el perfil.
+        """
+        with self._lock:
+            return [name for name, gesture in self.gestures.items() if gesture.enabled]
+
+    def get_movement_gesture_name(self) -> Optional[str]:
+        """
+        Busca el nombre del gesto mapeado a la acción 'move' del mouse.
+        Útil para el loop de control directo.
+        """
+        with self._lock:
+            for name, gesture in self.gestures.items():
+                if gesture.enabled and gesture.action == 'mouse' and gesture.command == 'move':
+                    return name
+        return None
+
     def get_voice_action(self, command_text: str, confidence: float = 1.0) -> Optional[Dict[str, Any]]:
         """
         Obtiene acción para ejecutar basada en comando de voz.
@@ -883,33 +914,6 @@ class ProfileRuntime:
                 'settings': self.settings.copy(),
                 'enabled_modules': self.enabled_modules.copy()
             }
-    
-    def get_all_gestures(self) -> Dict[str, Dict]:
-        """
-        Obtiene todos los gestos del perfil.
-        Para compatibilidad con código existente.
-        
-        Returns:
-            Diccionario con todos los gestos
-        """
-        with self._lock:
-            gestures_dict = {}
-            for name, gesture in self.gestures.items():
-                if gesture.enabled:
-                    gestures_dict[name] = {
-                        'name': name,
-                        'action': gesture.action,
-                        'command': gesture.command,
-                        'description': gesture.description,
-                        'source': gesture.source,
-                        'hand': gesture.hand,
-                        'enabled': gesture.enabled,
-                        'confidence': gesture.confidence,
-                        'cooldown': gesture.cooldown,
-                        'parameters': gesture.parameters,
-                        'last_executed': gesture.last_executed
-                    }
-            return gestures_dict
     
     def get_all_gesture_configs(self) -> Dict[str, GestureConfig]:
         """

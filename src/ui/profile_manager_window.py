@@ -77,6 +77,10 @@ class ProfileEditorWidget(QWidget):
         self.author_input.setPlaceholderText("Autor del perfil...")
         basic_layout.addRow("Autor:", self.author_input)
         
+        self.os_combo = QComboBox()
+        self.os_combo.addItems(["any", "windows", "linux"])
+        basic_layout.addRow("Sistema Operativo:", self.os_combo)
+        
         basic_group.setLayout(basic_layout)
         scroll_layout.addWidget(basic_group)
         
@@ -171,7 +175,7 @@ class ProfileEditorWidget(QWidget):
             self.mouse_sensitivity, self.keyboard_delay, self.gesture_cooldown,
             self.module_hand, self.module_voice, self.module_keyboard,
             self.module_mouse, self.module_window, self.module_bash,
-            self.use_template, self.template_combo
+            self.use_template, self.template_combo, self.os_combo
         ]
         
         for widget in widgets:
@@ -199,6 +203,11 @@ class ProfileEditorWidget(QWidget):
         self.name_input.setText(profile_data.get('profile_name', ''))
         self.description_input.setPlainText(profile_data.get('description', ''))
         self.author_input.setText(profile_data.get('author', 'Sistema'))
+        
+        os_val = profile_data.get('os_type', 'any')
+        idx = self.os_combo.findText(os_val)
+        if idx >= 0:
+            self.os_combo.setCurrentIndex(idx)
         
         # Configuración
         settings = profile_data.get('settings', {})
@@ -245,6 +254,7 @@ class ProfileEditorWidget(QWidget):
             'description': self.description_input.toPlainText().strip(),
             'version': '1.0.0',
             'author': self.author_input.text().strip(),
+            'os_type': self.os_combo.currentText(),
             'gestures': gestures_template,
             'voice_commands': self._get_template_voice_commands(),
             'settings': {
@@ -773,6 +783,9 @@ class ProfileManagerWindow(QDialog):
                 items = self.profile_list.findItems(new_name, Qt.MatchFlag.MatchExactly)
                 if items:
                     self.profile_list.setCurrentItem(items[0])
+                
+                # EMITIR SEÑAL para que MainWindow actualice el selector
+                self.profile_saved.emit(new_name)
                     
                 self.status_bar.showMessage(f"Perfil '{new_name}' creado exitosamente", 3000)
                 

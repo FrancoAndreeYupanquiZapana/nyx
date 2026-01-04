@@ -3,6 +3,7 @@
   "description": "Perfil personalizado",
   "version": "1.0.0",
   "author": "Sistema",
+  "os_type": "any",
   "gestures": {
     "fist": {
       "action": "keyboard",

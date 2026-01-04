@@ -52,16 +52,21 @@ class HandDetector:
         # Gestos reconocidos
         self.GESTURES = {
             'fist': self._is_fist,
-            'victory': self._is_peace, # Renamed from peace as per user request
+            'victory': self._is_peace,
             'thumbs_up': self._is_thumbs_up,
             'thumbs_down': self._is_thumbs_down,
             'rock': self._is_rock,
             'ok': self._is_ok,
             'point': self._is_point,
             'palm': self._is_palm,
-            # 'victory': self._is_victory, # Consolidated with peace
             'call_me': self._is_call_me,
-            'stop': self._is_stop
+            'stop': self._is_stop,
+            # --- Aliases y nuevos gestos para compatibilidad con perfiles ---
+            'pinch': self._is_ok,
+            'right_click_pinch': self._is_right_click_pinch,
+            'drag_start': ['drag_start', 'start_drag'],
+            'drag_end': ['drag_end', 'end_drag', 'release'],
+            'scroll_mode': ['scroll_mode', 'scroll']
         }
         
         # Landmarks importantes
@@ -88,6 +93,9 @@ class HandDetector:
             'gestures_detected': 0,
             'fps': 0
         }
+        
+        # Gestos activos (para filtrar por perfil)
+        self.active_gestures = None
         
         # Historial para estabilizar gestos
         self.gesture_history = []
@@ -173,6 +181,12 @@ class HandDetector:
                 
                 # Dibujar caja delimitadora y etiqueta
                 self._draw_hand_info(processed_image, hand_info, gestures)
+        
+        # Detectar gestos que requieren ambas manos
+        if len(hands_data) >= 2:
+            both_hands_gestures = self._detect_both_hands_gestures(hands_data, results)
+            all_gestures.extend(both_hands_gestures)
+
         
         # Dibujar información del sistema
         processed_image = self._draw_system_info(processed_image)
@@ -270,6 +284,10 @@ class HandDetector:
         gestures = []
         
         for gesture_name, detector_func in self.GESTURES.items():
+            # Filtrar si hay gestos activos definidos
+            if self.active_gestures is not None and gesture_name not in self.active_gestures:
+                continue
+                
             try:
                 if detector_func(landmarks):
                     # Calcular confianza básica
@@ -404,6 +422,16 @@ class HandDetector:
             # Los otros dedos pueden estar extendidos o ligeramente doblados
             return True
         return False
+        
+    def _is_right_click_pinch(self, landmarks) -> bool:
+        """Detecta pellizco con el dedo medio (para click derecho)."""
+        thumb_tip = landmarks.landmark[4]
+        middle_tip = landmarks.landmark[12]
+        
+        distance = ((thumb_tip.x - middle_tip.x) ** 2 + 
+                   (thumb_tip.y - middle_tip.y) ** 2) ** 0.5
+        
+        return distance < 0.05
     
     def _is_point(self, landmarks) -> bool:
         """Detecta gesto de señalar (solo índice extendido)."""
@@ -418,6 +446,59 @@ class HandDetector:
                     return False
             return True
         return False
+    
+    def _detect_both_hands_gestures(self, hands_data: List[Dict], results) -> List[Dict]:
+        """
+        Detecta gestos que requieren ambas manos.
+        
+        Args:
+            hands_data: Lista de información de manos detectadas
+            results: Resultados de MediaPipe
+        
+        Returns:
+            Lista de gestos detectados que requieren ambas manos
+        """
+        gestures = []
+        
+        # Verificar si ambas manos están abiertas (palmas)
+        if len(hands_data) >= 2:
+            both_open = True
+            
+            for i, hand_landmarks in enumerate(results.multi_hand_landmarks[:2]):
+                # Verificar si todos los dedos están extendidos
+                fingers_extended = 0
+                
+                # Pulgar
+                if hand_landmarks.landmark[4].x < hand_landmarks.landmark[3].x:
+                    fingers_extended += 1
+                
+                # Otros dedos (índice, medio, anular, meñique)
+                finger_tips = [8, 12, 16, 20]
+                finger_pips = [6, 10, 14, 18]
+                
+                for tip, pip in zip(finger_tips, finger_pips):
+                    if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[pip].y:
+                        fingers_extended += 1
+                
+                # Si no tiene al menos 4 dedos extendidos, no es palma abierta
+                if fingers_extended < 4:
+                    both_open = False
+                    break
+            
+            # Siempre emitir el gesto si ambas manos están abiertas
+            # (no depender de active_gestures ya que es un gesto especial del sistema)
+            if both_open:
+                gestures.append({
+                    'type': 'hand',
+                    'gesture': 'both_hands_open',
+                    'hand': 'both',
+                    'confidence': 0.9,
+                    'timestamp': time.time(),
+                    'hands_count': len(hands_data)
+                })
+                logger.debug("🙌 Gesto detectado: both_hands_open")
+        
+        return gestures
     
     def _is_palm(self, landmarks) -> bool:
         """Detecta mano abierta (todos los dedos extendidos)."""
@@ -715,6 +796,18 @@ class HandDetector:
         )
         
         logger.info(f"🔄 Configuración actualizada: {kwargs}")
+    
+    def set_active_gestures(self, gesture_names: List[str]):
+        """
+        Establece los gestos que deben ser detectados.
+        Si es None o vacío, se detectan todos los gestos disponibles.
+        """
+        if not gesture_names:
+            self.active_gestures = None
+            logger.info("✅ Todos los gestos habilitados en HandDetector")
+        else:
+            self.active_gestures = gesture_names
+            logger.info(f"✅ {len(gesture_names)} gestos habilitados en HandDetector: {gesture_names}")
     
     def release(self):
         """Libera recursos del detector."""

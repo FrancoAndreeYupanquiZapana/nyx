@@ -19,6 +19,13 @@ from enum import Enum
 from dataclasses import dataclass, asdict
 from datetime import datetime
 import numpy as np
+import io
+
+try:
+    from faster_whisper import WhisperModel
+    FASTER_WHISPER_AVAILABLE = True
+except ImportError:
+    FASTER_WHISPER_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +156,14 @@ class VoiceRecognizer:
         self.monitoring_thread = None
         
         # Módulos de speech recognition (lazy loading)
+        # Módulos de speech recognition (lazy loading)
         self.recognizer = None
         self.microphone = None
         self.speech_recognition_available = False
+        
+        # Faster-Whisper
+        self.whisper_model = None
+        self.use_faster_whisper = self.config.get('voice_recognition', {}).get('use_faster_whisper', True)
         
         # Estadísticas
         self.stats = VoiceStats()
@@ -175,18 +187,15 @@ class VoiceRecognizer:
         if self.save_audio_samples:
             os.makedirs(self.audio_samples_dir, exist_ok=True)
         
-        logger.info(f"✅ VoiceRecognizer inicializado para NYX (activación: '{self.activation_word}')")
+        # Temporizador para modo activo forzado (post-activación)
+        self.force_listening_until = 0
+        self.temp_activation_duration = 5.0  # s
+        
+        # Encolado de audio
+        self.audio_queue = queue.Queue(maxsize=10)
+        
+        logger.info(f"✅ VoiceRecognizer inicializado: lang={self.language}, continuous={self.continuous_listening}")
     
-    def start(self):
-        """Inicia el reconocimiento de voz."""
-        if self.is_running:
-            return
-            
-        self.is_running = True
-        self.listening_enabled = True
-        self.state = VoiceState.READY
-        logger.info("▶️ VoiceRecognizer iniciado")
-
     def stop(self):
         """Detiene el reconocimiento de voz de manera controlada."""
         if not self.is_running:
@@ -208,6 +217,13 @@ class VoiceRecognizer:
             import pyaudio
             
             self.speech_recognition_available = True
+            
+            if self.use_faster_whisper:
+                if FASTER_WHISPER_AVAILABLE:
+                     logger.debug("✅ Faster-Whisper disponible")
+                else:
+                     logger.warning("⚠️ Faster-Whisper no instalado, usando Google Speech Recognition")
+            
             logger.debug("✅ Módulos de speech recognition disponibles")
             return True
             
@@ -376,10 +392,19 @@ class VoiceRecognizer:
             logger.info("🎤 VoiceRecognizer deshabilitado en configuración")
             self.state = VoiceState.DISABLED
             return False
+            
+        # USER REQUEST: Disable voice recognition temporarily
+        logger.info("🚫 Voice recognition disabled by user request for debugging gestures")
+        self.state = VoiceState.DISABLED
+        return False
         
         logger.info("▶️ Iniciando VoiceRecognizer (Asíncrono)...")
         self.state = VoiceState.INITIALIZING
         self.is_running = True
+        
+        # Modo de escucha inicial: si es continuo, empezar escuchando.
+        # Si no, esperar a activación por gesto (PTT).
+        self.listening_enabled = self.continuous_listening
         
         # Iniciar hilo de inicialización para no bloquear el arranque
         self.init_thread = threading.Thread(
@@ -397,12 +422,47 @@ class VoiceRecognizer:
             logger.info("🧵 Hilo de inicialización de voz comenzado")
             import speech_recognition as sr
             print("DEBUG_PRINT: Speech recognition imported")
-            self.recognizer = sr.Recognizer()
+            try:
+                print("DEBUG_PRINT: Creating sr.Recognizer...")
+                self.recognizer = sr.Recognizer()
+                print("DEBUG_PRINT: sr.Recognizer created")
+            except Exception as re:
+                print(f"DEBUG_PRINT: Error creating recognizer: {re}")
+                logger.error(f"❌ Error creando Recognizer: {re}")
             
             # Configurar reconocedor
-            self.recognizer.energy_threshold = self.energy_threshold
-            self.recognizer.dynamic_energy_threshold = self.dynamic_energy_threshold
-            self.recognizer.pause_threshold = self.pause_threshold
+            if self.recognizer:
+                try:
+                    self.recognizer.energy_threshold = self.energy_threshold
+                    self.recognizer.dynamic_energy_threshold = self.dynamic_energy_threshold
+                    self.recognizer.pause_threshold = self.pause_threshold
+                    print("DEBUG_PRINT: Recognizer configured")
+                except Exception as ce:
+                    print(f"DEBUG_PRINT: Error configuring recognizer: {ce}")
+            
+            # Inicializar Faster-Whisper si está disponible
+            if self.use_faster_whisper and FASTER_WHISPER_AVAILABLE:
+                try:
+                    print("DEBUG_PRINT: Preparing Faster-Whisper...")
+                    logger.info("🤖 Cargando modelo Faster-Whisper (base)...")
+                    
+                    # Asegurar que el directorio de descarga existe
+                    download_path = os.path.join(os.getcwd(), "models", "whisper")
+                    os.makedirs(download_path, exist_ok=True)
+                    
+                    # Usar 'cpu' por defecto para máxima compatibilidad
+                    # int8 para CPU es rápido y eficiente
+                    self.whisper_model = WhisperModel(
+                        "base", 
+                        device="cpu", 
+                        compute_type="int8",
+                        download_root=download_path
+                    )
+                    logger.info("✅ Modelo Faster-Whisper (CPU/int8) cargado correctamente")
+                except Exception as we:
+                    logger.error(f"❌ Error cargando Faster-Whisper: {we}")
+                    logger.info("⚠️ Usando Google Speech Recognition como fallback")
+                    self.whisper_model = None
             
             # Obtener micrófono
             try:
@@ -515,8 +575,23 @@ class VoiceRecognizer:
                     time.sleep(0.5)
                     continue
                 
-                # --- CHECK LISTENING ENABLED (Strict Push-to-Talk) ---
-                if not self.listening_enabled:
+                # --- CHECK LISTENING ENABLED ---
+                # Debemos escuchar si:
+                # 1. Listening is explicitly enabled (PTT/Victory gesture).
+                # 2. Continuous listening is ON in config.
+                # 3. An activation word is configured (we MUST listen in background to hear "Nyx").
+                # 4. We just heard "Nyx" and are in the 5s grace period.
+                
+                is_temp_active = current_time < self.force_listening_until
+                
+                should_listen = (
+                    self.listening_enabled or 
+                    self.continuous_listening or 
+                    is_temp_active or 
+                    (self.activation_word and len(self.activation_word.strip()) > 0)
+                )
+                
+                if not should_listen:
                     time.sleep(0.1)
                     continue
 
@@ -576,11 +651,45 @@ class VoiceRecognizer:
                     # Reconocer texto
                     try:
                         start_time = time.time()
-                        text = self.recognizer.recognize_google(
-                            audio,
-                            language=self.language,
-                            show_all=False
-                        ).lower()
+                        text = ""
+                        
+                        if self.whisper_model:
+                            # Usar Faster-Whisper
+                            try:
+                                wav_data = audio.get_wav_data()
+                                audio_file = io.BytesIO(wav_data)
+                                
+                                # Transcribir
+                                segments, info = self.whisper_model.transcribe(
+                                    audio_file, 
+                                    beam_size=5, 
+                                    language='es',
+                                    vad_filter=True,
+                                    vad_parameters=dict(min_silence_duration_ms=500)
+                                )
+                                
+                                # Combinar segmentos
+                                text_parts = []
+                                for segment in segments:
+                                    text_parts.append(segment.text)
+                                
+                                text = " ".join(text_parts).lower().strip()
+                                
+                                if not text:
+                                    logger.debug("🔈 Faster-Whisper no detectó habla clara")
+                            except Exception as whisper_err:
+                                logger.error(f"❌ Error en transcripción Whisper: {whisper_err}")
+                                # Fallback dinámico a Google si falla Whisper durante ejecución
+                                text = self.recognizer.recognize_google(
+                                    audio, language=self.language
+                                ).lower()
+                        else:
+                            # Fallback a Google
+                            text = self.recognizer.recognize_google(
+                                audio,
+                                language=self.language,
+                                show_all=False
+                            ).lower()
                         
                         response_time = time.time() - start_time
                         self.stats.add_response_time(response_time)
@@ -691,6 +800,10 @@ class VoiceRecognizer:
             has_activation = True
             self.stats.activation_detected += 1
             self._emit_activation_detected(text)
+            
+            # --- NUEVO: Activar escucha temporal por 5 segundos ---
+            self.force_listening_until = time.time() + self.temp_activation_duration
+            logger.info("🔥 Activación por palabra detectada: Entrando en modo comandos (5s)")
             
             # Remover palabra de activación para matching
             text = activation_pattern.sub('', text).strip()

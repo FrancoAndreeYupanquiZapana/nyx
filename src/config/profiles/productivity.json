@@ -1,8 +1,9 @@
 {
   "profile_name": "productivity",
-  "description": "Perfil para trabajo y productividad",
+  "description": "Perfil optimizado para navegación web y productividad.",
   "version": "1.0.0",
-  "author": "Sistema",
+  "author": "Nyx Team",
+  "os_type": "any",
   "gestures": {
     "pinch": {
       "action": "mouse",

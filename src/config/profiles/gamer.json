@@ -3,6 +3,7 @@
   "description": "Perfil para gaming - gestos rápidos y precisos",
   "version": "1.0.0",
   "author": "NYX Sistema",
+  "os_type": "windows",
   "gestures": {
     "fist": {
       "action": "mouse",
@@ -145,7 +146,7 @@
     }
   },
   "settings": {
-    "mouse_sensitivity": 1.5,
+    "mouse_sensitivity": 2.5,
     "keyboard_delay": 0.1,
     "gesture_cooldown": 0.3,
     "sensitivity": 7,
@@ -157,5 +158,13 @@
     "keyboard",
     "mouse",
     "window"
-  ]
+  ],
+  "quick_menu": {
+    "enabled": true,
+    "gesture": "both_hands_open",
+    "show_categories": true,
+    "favorite_scripts": [
+      "open_chrome"
+    ]
+  }
 }

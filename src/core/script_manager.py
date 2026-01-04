@@ -7,6 +7,7 @@ Carga, filtra y ejecuta scripts del catálogo según el OS del perfil activo.
 import json
 import platform
 import logging
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 

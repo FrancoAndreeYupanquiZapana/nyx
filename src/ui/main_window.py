@@ -28,6 +28,7 @@ from ui.styles import styles, get_color, get_font
 from ui.config_window import ConfigWindow
 from core.profile_manager import ProfileManager
 from ui.profile_manager_window import ProfileManagerWindow
+from ui.quick_script_menu import QuickScriptMenu
 from utils.logger import logger
 from utils.config_loader import config
 from core.gesture_pipeline import GesturePipeline
@@ -114,13 +115,15 @@ class CameraView(QFrame):
             bytes_per_line = ch * w
             
             # Crear QImage
+            # CRÍTICO: Usar .copy() para evitar que el recolector de basura 
+            # elimine los datos antes de que QPixmap los use
             qimg = QImage(
                 rgb.data,
                 w,
                 h,
                 bytes_per_line,
                 QImage.Format.Format_RGB888
-            )
+            ).copy()
             
             # Crear QPixmap
             pixmap = QPixmap.fromImage(qimg)
@@ -266,21 +269,35 @@ class ProfileSelector(QGroupBox):
         """Carga los perfiles disponibles."""
         self.profile_combo.clear()
         
-        profiles = config.list_profiles()
-        if not profiles:
-            self.profile_combo.addItem("Sin perfiles")
+        try:
+            from core.profile_manager import ProfileManager
+            profile_manager = ProfileManager()
+            # Forzar recarga para detectar nuevos archivos JSON
+            profile_manager.load_all_profiles()
+            profiles = profile_manager.get_profile_names()
+            
+            if not profiles:
+                self.profile_combo.addItem("Sin perfiles")
+                self.profile_combo.setEnabled(False)
+                return
+            
+            self.profile_combo.setEnabled(True)
+            for profile in profiles:
+                self.profile_combo.addItem(profile)
+            
+            # Seleccionar el primero o el último usado
+            # Usar el config singleton para persistencia de settings
+            from utils.config_loader import config
+            last_profile = config.get_setting('app.last_profile')
+            
+            if last_profile and last_profile in profiles:
+                self.profile_combo.setCurrentText(last_profile)
+            elif profiles:
+                self.profile_combo.setCurrentIndex(0)
+        except Exception as e:
+            logger.error(f"Error cargando perfiles en selector: {e}")
+            self.profile_combo.addItem("Error cargando perfiles")
             self.profile_combo.setEnabled(False)
-            return
-        
-        for profile in profiles:
-            self.profile_combo.addItem(profile)
-        
-        # Seleccionar el primero o el último usado
-        last_profile = config.get_setting('app.last_profile')
-        if last_profile and last_profile in profiles:
-            self.profile_combo.setCurrentText(last_profile)
-        elif profiles:
-            self.profile_combo.setCurrentIndex(0)
     
     def _on_profile_changed(self, profile_name: str):
         """Manejador cuando cambia el perfil."""
@@ -513,6 +530,25 @@ class MainWindow(QMainWindow):
         self._load_config()
         
         logger.info("✅ Ventana principal de NYX inicializada")
+    
+    def set_gesture_pipeline(self, pipeline):
+        """Establece la instancia del pipeline de gestos."""
+        self.gesture_pipeline = pipeline
+        logger.info("🎮 Pipeline de gestos conectado a la UI")
+        
+        # Conectar señal del quick menu
+        if hasattr(pipeline, 'quick_menu_requested'):
+            pipeline.quick_menu_requested.connect(self._on_quick_menu_requested)
+            logger.info("⚡ Quick Menu conectado al pipeline")
+        
+    def set_profile_manager(self, manager):
+        """Establece la instancia del gestor de perfiles."""
+        # Si recibimos el config_loader (como sucede en main.py), lo usamos
+        # pero mantenemos nuestro singleton ProfileManager si es posible.
+        # En realidad, ProfileManager es un singleton, así que podemos ignorar
+        # el parámetro si queremos, pero lo guardamos por compatibilidad.
+        self.external_manager = manager
+        logger.info("👤 Gestor de perfiles conectado a la UI")
     
     def _init_ui(self):
         """Inicializa la interfaz de usuario."""
@@ -872,8 +908,15 @@ class MainWindow(QMainWindow):
             
             logger.info("📋 Configuración del sistema cargada")
             
-            # 5. Crear e iniciar GesturePipeline
-            self.gesture_pipeline = GesturePipeline(system_config)
+            # 5. Usar instancia existente o crear una nueva si es necesario
+            if self.gesture_pipeline:
+                logger.info("🎮 Reutilizando instancia de GesturePipeline existente")
+                # Actualizar configuración si es necesario
+                if hasattr(self.gesture_pipeline, 'config'):
+                    self.gesture_pipeline.config.update(system_config)
+            else:
+                logger.warning("⚠️ No se encontró GesturePipeline configurado, creando uno nuevo...")
+                self.gesture_pipeline = GesturePipeline(system_config)
             
             # 6. Conectar señales del pipeline
             if hasattr(self.gesture_pipeline, 'gesture_detected'):
@@ -1195,6 +1238,32 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error cambiando perfil: {e}")
             self._log_to_console(f"❌ Error cambiando perfil: {str(e)}", get_color('error'))
+    
+    def _on_quick_menu_requested(self, profile_os: str):
+        """Manejador cuando se solicita el quick menu por gesto."""
+        try:
+            logger.info(f"⚡ Quick Menu solicitado (OS: {profile_os})")
+            
+            # Crear y mostrar el modal
+            quick_menu = QuickScriptMenu(profile_os=profile_os, parent=self)
+            
+            # Conectar señal de script ejecutado
+            quick_menu.script_executed.connect(self._on_script_executed)
+            
+            # Mostrar modal
+            quick_menu.exec()
+            
+        except Exception as e:
+            logger.error(f"❌ Error mostrando Quick Menu: {e}")
+            self._log_to_console(f"❌ Error en Quick Menu: {str(e)}", get_color('error'))
+    
+    def _on_script_executed(self, script_id: str):
+        """Manejador cuando se ejecuta un script desde el quick menu."""
+        try:
+            logger.info(f"✅ Script ejecutado desde Quick Menu: {script_id}")
+            self._log_to_console(f"⚡ Script ejecutado: {script_id}", get_color('success'))
+        except Exception as e:
+            logger.error(f"Error en callback de script ejecutado: {e}")
     
     # ===== MÉTODOS DE CONFIGURACIÓN =====
     

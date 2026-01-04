@@ -1050,6 +1050,14 @@ class GestureIntegrator:
         if profile_runtime:
             self.current_profile = profile_runtime.name
             logger.info(f"🔄 Perfil '{self.current_profile}' cargado en Integrador")
+            
+            # Propagar mapeos a los intérpretes registrados
+            for name, interpreter in self.interpreters.items():
+                if hasattr(interpreter, 'load_gesture_mappings'):
+                    interpreter.load_gesture_mappings(profile_runtime.get_all_gestures())
+                    logger.debug(f"📤 Mapeos propagados al intérprete (via runtime): {name}")
+                elif hasattr(interpreter, 'set_profile_runtime'):
+                    interpreter.set_profile_runtime(profile_runtime)
 
     def load_profile(self, profile_data: Dict):
         """Carga un perfil desde sus datos."""
@@ -1069,6 +1077,32 @@ class GestureIntegrator:
             logger.info(f"✅ Perfil '{self.current_profile}' cargado en Integrador")
         except Exception as e:
             logger.error(f"❌ Error cargando perfil en Integrador: {e}")
+
+    def _activate_voice_mode(self):
+        """Activa el modo de voz (Push-to-Talk)."""
+        self.is_voice_active = True
+        if self.pipeline and hasattr(self.pipeline, 'voice_recognizer'):
+            if self.pipeline.voice_recognizer:
+                # Actualizar estado en el reconocedor
+                self.pipeline.voice_recognizer.activate_listening()
+                logger.debug("🎙️ Listening ENABLED via Integrator")
+        
+        # Emitir señal a la UI si es necesario (vía pipeline)
+        if self.pipeline and hasattr(self.pipeline, 'voice_event'):
+            self.pipeline.voice_event.emit('listening_started', {'source': 'gesture'})
+
+    def _deactivate_voice_mode(self):
+        """Desactiva el modo de voz."""
+        self.is_voice_active = False
+        if self.pipeline and hasattr(self.pipeline, 'voice_recognizer'):
+            if self.pipeline.voice_recognizer:
+                # Actualizar estado en el reconocedor
+                self.pipeline.voice_recognizer.deactivate_listening()
+                logger.debug("🎙️ Listening DISABLED via Integrator")
+        
+        # Emitir señal a la UI
+        if self.pipeline and hasattr(self.pipeline, 'voice_event'):
+            self.pipeline.voice_event.emit('listening_stopped', {'source': 'gesture'})
 
     def _apply_profile_mapping(self, gesture: Dict):
         """Busca mapeo en perfil y marca el gesto como mapeado."""

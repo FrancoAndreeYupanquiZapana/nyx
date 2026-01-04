@@ -114,7 +114,8 @@ class SimpleProfileCreator(QDialog):
             'rock': '🤘 Rock / Cuernos',
             'call_me': '🤙 Llámame',
             'point': '☝️ Dedo Índice',
-            'ok': '👌 OK / Círculo'
+            'ok': '👌 OK / Círculo',
+            'palm': '✋ Palma Abierta'
         }
         
         self.mouse_actions = {
@@ -167,6 +168,11 @@ class SimpleProfileCreator(QDialog):
         self.author_input = QLineEdit()
         self.author_input.setText("Usuario")
         basic_layout.addRow("Autor:", self.author_input)
+        
+        self.os_combo = QComboBox()
+        self.os_combo.addItems(["Cualquiera", "Windows", "Linux"])
+        self.os_combo.setItemIcon(1, QIcon()) # Metadata or custom styles could be added later
+        basic_layout.addRow("Sistema (SO):", self.os_combo)
         
         basic_group.setLayout(basic_layout)
         layout.addWidget(basic_group)
@@ -384,6 +390,11 @@ class SimpleProfileCreator(QDialog):
                     combo_type.setCurrentIndex(idx)
                     combo_type.blockSignals(False)
                     self._set_cell_widget_by_type(i, action, command)
+                    
+        # OS (new)
+        os_val = profile_data.get('os_type', 'any')
+        os_map = {"any": 0, "windows": 1, "linux": 2}
+        self.os_combo.setCurrentIndex(os_map.get(os_val, 0))
 
     def apply_template(self):
         txt = self.template_combo.currentText()
@@ -432,8 +443,12 @@ class SimpleProfileCreator(QDialog):
         
         try:
             desc = f"Perfil {name}"
+            os_map = {0: "any", 1: "windows", 2: "linux"}
+            os_type = os_map.get(self.os_combo.currentIndex(), "any")
+            
             new_profile = ProfileData(
                 profile_name=name, author=self.author_input.text(), description=desc,
+                os_type=os_type,
                 gestures=gestures_config, voice_commands={},
                 settings={'mouse_sensitivity': self.sensitivity.value(), 'keyboard_delay': 0.1, 'gesture_cooldown': 0.3},
                 enabled_modules=modules

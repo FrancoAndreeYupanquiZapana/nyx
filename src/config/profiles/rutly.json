@@ -1,0 +1,54 @@
+{
+  "profile_name": "rutly",
+  "description": "Perfil rutly",
+  "version": "1.0.0",
+  "author": "Usuario",
+  "os_type": "windows",
+  "gestures": {
+    "fist": {
+      "action": "mouse",
+      "command": "move",
+      "description": "Acción move",
+      "enabled": true,
+      "type": "hand",
+      "hand": "right",
+      "confidence": 0.7
+    },
+    "victory": {
+      "action": "mouse",
+      "command": "click",
+      "description": "Acción click",
+      "enabled": true,
+      "type": "hand",
+      "hand": "right",
+      "confidence": 0.7
+    },
+    "rock": {
+      "action": "mouse",
+      "command": "right_click",
+      "description": "Acción right_click",
+      "enabled": true,
+      "type": "hand",
+      "hand": "right",
+      "confidence": 0.7
+    }
+  },
+  "voice_commands": {},
+  "settings": {
+    "mouse_sensitivity": 1.5,
+    "keyboard_delay": 0.1,
+    "gesture_cooldown": 0.3
+  },
+  "enabled_modules": [
+    "hand",
+    "voice",
+    "keyboard",
+    "mouse"
+  ],
+  "quick_menu": {
+    "enabled": true,
+    "gesture": "both_hands_open",
+    "show_categories": true,
+    "favorite_scripts": []
+  }
+}

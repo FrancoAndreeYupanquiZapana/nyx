@@ -1,0 +1,8 @@
+# Forzar que los scripts de Linux siempre mantengan LF
+*.sh text eol=lf
+# Forzar que los archivos batch de Windows siempre mantengan CRLF
+*.bat text eol=crlf
+# Evitar que Git intente adivinar o convertir archivos de modelos/datos
+*.json -text
+*.txt -text 
+models/whisper/models--Systran--faster-whisper-base/snapshots/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/model.bin filter=lfs diff=lfs merge=lfs -text

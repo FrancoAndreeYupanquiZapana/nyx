@@ -21,6 +21,7 @@ class ProfileData:
     description: str = ""
     version: str = "1.0.0"
     author: str = "Sistema"
+    os_type: str = "any"            # windows, linux, any
     gestures: Dict[str, Dict] = field(default_factory=dict)
     voice_commands: Dict[str, Dict] = field(default_factory=dict)
     settings: Dict[str, Any] = field(default_factory=dict)
@@ -28,6 +29,10 @@ class ProfileData:
     
     def __post_init__(self):
         """Validar y normalizar datos del perfil."""
+        # Normalizar OS
+        if self.os_type not in ['windows', 'linux', 'any']:
+            self.os_type = 'any'
+            
         # Normalizar nombres de módulos
         valid_modules = ['hand', 'arm', 'voice', 'keyboard', 'mouse', 'window', 'bash']
         self.enabled_modules = [m for m in self.enabled_modules if m in valid_modules]
@@ -50,6 +55,7 @@ class ProfileData:
             'description': self.description,
             'version': self.version,
             'author': self.author,
+            'os_type': self.os_type,
             'gestures': self.gestures,
             'voice_commands': self.voice_commands,
             'settings': self.settings,
@@ -93,11 +99,14 @@ class ProfileManager:
     def _get_profiles_dir(self) -> Path:
         """Obtiene el directorio de perfiles según la arquitectura de NYX."""
         # Intentar diferentes rutas en orden de prioridad
+        # 1. Relativo al archivo actual (src/core/profile_manager.py -> src/config/profiles)
+        src_dir = Path(__file__).resolve().parent.parent
+        
         possible_paths = [
-            Path("src/config/profiles"),           # Estructura estándar
-            Path.cwd() / "src" / "config" / "profiles", # Ruta absoluta desde CWD
-            Path(__file__).parent.parent / "config" / "profiles", # Relativo a core/
-            Path.home() / ".config" / "nyx" / "profiles"  # Config global (opcional)
+            src_dir / "config" / "profiles",
+            Path.cwd() / "src" / "config" / "profiles",
+            Path.cwd() / "config" / "profiles",
+            Path.home() / ".config" / "nyx" / "profiles"
         ]
         
         for path in possible_paths:
@@ -210,6 +219,21 @@ class ProfileManager:
                 self.profiles[name] = profile_data
                 return profile_data
         
+        return None
+    
+    def get_profile_data(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene los datos de un perfil como diccionario.
+        
+        Args:
+            name: Nombre del perfil
+            
+        Returns:
+            Dict con datos del perfil o None
+        """
+        profile = self.get_profile(name)
+        if profile:
+            return profile.to_dict()
         return None
     
     def get_profile_runtime(self, name: str) -> Optional[Any]:

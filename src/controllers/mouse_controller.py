@@ -553,12 +553,11 @@ class MouseController:
             if 'sensitivity' in mouse_settings:
                 self.nyx_config.sensitivity = mouse_settings['sensitivity']
                 logger.info(f"🔄 Sensibilidad del mouse cambiada: {self.nyx_config.sensitivity}")
-            
             if 'smooth_movement' in mouse_settings:
                 self.nyx_config.smooth_movement = mouse_settings['smooth_movement']
                 logger.info(f"🔄 Movimiento suave: {'ON' if self.nyx_config.smooth_movement else 'OFF'}")
     
-    def process_direct_hand(self, landmarks: List[Dict], frame_w: int, frame_h: int):
+    def process_direct_hand(self, landmarks: List[Dict], frame_w: int, frame_h: int, external_move_flag: bool = False):
         """
         Procesa landmarks directamente usando la lógica simple pero EFECTIVA.
         Bypassea el sistema de acciones tradicional para máximos FPS y fluidez.
@@ -616,11 +615,14 @@ class MouseController:
             if not hasattr(self, '_f_log'): self._f_log = 0
             self._f_log += 1
             if self._f_log % 20 == 0:
-                logger.info(f"�️ Dedos: {fingers_extended} | Dragging: {self.is_dragging} | OnlyIdx: {only_index}")
+                logger.info(f"️ Dedos: {fingers_extended} | Dragging: {self.is_dragging} | OnlyIdx: {only_index}")
 
-            # --- LÓGICA DE MOVIMIENTO ---
-            # Mover si: mano abierta O estamos en pleno arrastre
-            should_move = open_hand or self.is_dragging
+            # --- LÓGICA DE MOVIMIENTO MEJORADA ---
+            # Mover si: 
+            # 1. El pipeline detectó el gesto de movimiento del perfil (external_move_flag)
+            # 2. O estamos en modo tradicional de mano abierta (fallback)
+            # 3. O estamos en pleno arrastre
+            should_move = external_move_flag or open_hand or self.is_dragging
             
             if should_move and not getattr(self, '_freeze_cursor', False):
                 if self.nyx_config.smooth_movement:

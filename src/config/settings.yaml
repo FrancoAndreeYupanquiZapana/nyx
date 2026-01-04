@@ -1,7 +1,7 @@
 active_profile: gamer
 app:
   activation_word: nyx
-  last_profile: gamer
+  last_profile: productivity
 arm_detection:
   enabled: true
   min_detection_confidence: 0.5

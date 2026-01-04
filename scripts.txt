@@ -1,0 +1,29 @@
+Pasos para agregar un script al menú rápido:
+
+1. Crear el archivo del script
+2. Registrar el script en el catálogo
+3. Cerrar y abrir la ventana de "Scripts Rápidos" para que el nuevo script aparezca en la lista.
+
+
+Ejemplo de un script:
+{
+    "id": "mi_nuevo_script",
+    "name": "Nombre visible en el menú",
+    "description": "Breve descripción de lo que hace",
+    "icon": "🚀",
+    "os_type": "any",
+    "windows_path": "scripts/windows/mi_script.bat",
+    "linux_path": "scripts/linux/mi_script.sh",
+    "enabled": true,
+    "category": "personal"
+}
+
+Explicación de los campos:
+id: Un identificador único (sin espacios, usa guiones bajos).
+name: El nombre que se verá en la lista.
+icon: Un emoji para identificarlo visualmente.
+os_type:
+"windows": Solo aparece en Windows.
+"linux": Solo aparece en Linux.
+"any": Aparece en ambos (debes proporcionar ambas rutas).
+windows_path / linux_path: La ruta relativa desde la carpeta principal del proyecto.

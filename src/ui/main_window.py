@@ -508,6 +508,11 @@ class MainWindow(QMainWindow):
         self.current_profile = None
         self.last_frame_time = time.time()
         self.fps_counter = 0
+
+        # Icono de la ventana
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "Nyx.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         
         # Timers
         self.ui_update_timer = QTimer()

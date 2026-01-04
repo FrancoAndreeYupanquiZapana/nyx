@@ -47,8 +47,8 @@ if missing_critical:
 
 # Ahora importamos todo
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap, QFont, QColor, QPainter
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QRect
+from PyQt6.QtGui import QPixmap, QFont, QColor, QPainter, QIcon, QLinearGradient, QBrush
 
 # Importar nuestros módulos según arquitectura NYX
 from utils.logger import NYXLogger
@@ -80,59 +80,97 @@ class SplashScreen(QSplashScreen):
     """Pantalla de inicio personalizada para NYX."""
     
     def __init__(self, app_name="NYX"):
-        # Crear splash con gradiente NYX
-        pixmap = QPixmap(800, 500)
-        pixmap.fill(QColor(25, 25, 35))  # Fondo oscuro NYX
+        # Crear splash con gradiente
+        pixmap = QPixmap(600, 400)
+        pixmap.fill(Qt.GlobalColor.transparent)
         
         super().__init__(pixmap)
         
-        # Configurar fuente y estilo
-        self.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        # Configurar
+        self.app_name = app_name
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # Mostrar mensaje inicial
-        self.showMessage(
-            f"Inicializando {app_name}...",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter,
-            QColor(0, 200, 255)  # Azul NYX
-        )
+        # Cargar logo
+        root_dir = Path(__file__).resolve().parent
+        self.icon_path = root_dir / "assets" / "Nyx.ico"
         
-        # Dibujar logo NYX (texto simple)
-        self.draw_logo()
+        # Dibujar contenido inicial
+        self.draw_splash()
     
-    def draw_logo(self):
-        """Dibuja el logo de NYX en el splash."""
-        # Obtener el pixmap actual
+    def draw_splash(self, progress=0, message="Inicializando..."):
+        """Dibuja el contenido del splash screen."""
         pixmap = self.pixmap()
+        pixmap.fill(Qt.GlobalColor.transparent)
         
-        # Crear painter sobre el pixmap
         painter = QPainter(pixmap)
-        try:
-            painter.setPen(QColor(0, 200, 255))
-            painter.setFont(QFont("Segoe UI", 48, QFont.Weight.Bold))
-            painter.drawText(250, 200, "🎮 NYX")
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # 1. Dibujar fondo con borde redondeado y gradiente
+        path = QRect(0, 0, pixmap.width(), pixmap.height())
+        
+        gradient = QLinearGradient(0, 0, 0, pixmap.height())
+        gradient.setColorAt(0.0, QColor(30, 30, 45))     # Dark Blue/Black
+        gradient.setColorAt(1.0, QColor(15, 15, 25))     # Darker
+        
+        painter.setBrush(QBrush(gradient))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(path, 15, 15)
+        
+        # 2. Dibujar Logo
+        if self.icon_path.exists():
+            logo_pixmap = QPixmap(str(self.icon_path))
+            logo_scaled = logo_pixmap.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             
-            painter.setFont(QFont("Segoe UI", 14))
-            painter.setPen(QColor(150, 150, 180))
-            painter.drawText(280, 250, "Control por Gestos y Voz")
-        finally:
-            painter.end()
+            # Centrar logo horizontalmente, un poco arriba del centro vertical
+            logo_x = (pixmap.width() - logo_scaled.width()) // 2
+            logo_y = 60
+            painter.drawPixmap(logo_x, logo_y, logo_scaled)
         
-        # Actualizar el splash con el pixmap modificado
+        # 3. Dibujar Título "NYX"
+        painter.setFont(QFont("Segoe UI", 48, QFont.Weight.Bold))
+        painter.setPen(QColor(0, 229, 255))  # Cyan Neon
+        
+        title_rect = QRect(0, 200, pixmap.width(), 70)
+        painter.drawText(title_rect, Qt.AlignmentFlag.AlignCenter, "NYX")
+        
+        # 4. Dibujar Subtítulo
+        painter.setFont(QFont("Segoe UI", 12))
+        painter.setPen(QColor(180, 180, 200))  # Grey-ish
+        
+        subtitle_rect = QRect(0, 270, pixmap.width(), 30)
+        painter.drawText(subtitle_rect, Qt.AlignmentFlag.AlignCenter, "Control por Gestos y Voz")
+        
+        # 5. Barra de progreso (fondo)
+        bar_width = 400
+        bar_height = 4
+        bar_x = (pixmap.width() - bar_width) // 2
+        bar_y = 330
+        
+        painter.setBrush(QColor(50, 50, 60))
+        painter.drawRoundedRect(bar_x, bar_y, bar_width, bar_height, 2, 2)
+        
+        # 6. Barra de progreso (relleno)
+        if progress > 0:
+            progress_width = int(bar_width * (progress / 100))
+            painter.setBrush(QColor(0, 229, 255))
+            painter.drawRoundedRect(bar_x, bar_y, progress_width, bar_height, 2, 2)
+        
+        # 7. Mensaje de estado
+        painter.setFont(QFont("Segoe UI", 10))
+        painter.setPen(QColor(120, 120, 140))
+        msg_rect = QRect(0, 345, pixmap.width(), 30)
+        painter.drawText(msg_rect, Qt.AlignmentFlag.AlignCenter, message)
+        
+        painter.end()
         self.setPixmap(pixmap)
-    
-    def update_progress(self, message: str, progress: int = 0):
-        """Actualiza el mensaje de progreso."""
-        progress_text = f"{progress}%" if progress > 0 else ""
-        full_message = f"{message} {progress_text}".strip()
-        
-        self.showMessage(
-            full_message,
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter,
-            QColor(0, 200, 255)
-        )
         
         # Forzar actualización
         QApplication.processEvents()
+
+    def update_progress(self, message: str, progress: int = 0):
+        """Actualiza el mensaje y la barra de progreso."""
+        self.draw_splash(progress, message)
 
 
 class InitializationWorker(QThread):
@@ -542,6 +580,11 @@ class NYXApplication:
             self.app.setApplicationName("NYX")
             self.app.setApplicationVersion("1.0.0")
             self.app.setOrganizationName("NYX Project")
+            
+            # Establecer icono de la aplicación
+            icon_path = Path(__file__).resolve().parent / "assets" / "Nyx.ico"
+            if icon_path.exists():
+                self.app.setWindowIcon(QIcon(str(icon_path)))
             
             # 2. Mostrar splash screen
             self.splash = SplashScreen("NYX")

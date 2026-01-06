@@ -51,7 +51,7 @@ class NYXLogger:
         self.colors_enabled = colors and console
         
         # Crear directorio de logs
-        self.log_dir.mkdir(exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         
         # Configurar logger principal
         self.logger = logging.getLogger(app_name)

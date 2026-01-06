@@ -7,8 +7,8 @@
             "description": "Abre el navegador Google Chrome",
             "icon": "🌐",
             "os_type": "any",
-            "windows_path": "scripts/windows/open_chrome.bat",
-            "linux_path": "scripts/linux/open_chrome.sh",
+            "windows_path": "src/scripts/windows/open_chrome.bat",
+            "linux_path": "src/scripts/linux/open_chrome.sh",
             "enabled": true,
             "category": "navegacion"
         },
@@ -18,8 +18,8 @@
             "description": "Abre Canva en el navegador",
             "icon": "🎨",
             "os_type": "any",
-            "windows_path": "scripts/windows/open_canva.bat",
-            "linux_path": "scripts/linux/open_canva.sh",
+            "windows_path": "src/scripts/windows/open_canva.bat",
+            "linux_path": "src/scripts/linux/open_canva.sh",
             "enabled": true,
             "category": "productividad"
         },
@@ -29,8 +29,8 @@
             "description": "Abre Facebook en el navegador",
             "icon": "📘",
             "os_type": "any",
-            "windows_path": "scripts/windows/open_facebook.bat",
-            "linux_path": "scripts/linux/open_facebook.sh",
+            "windows_path": "src/scripts/windows/open_facebook.bat",
+            "linux_path": "src/scripts/linux/open_facebook.sh",
             "enabled": true,
             "category": "redes_sociales"
         },
@@ -40,8 +40,8 @@
             "description": "Abre YouTube en el navegador",
             "icon": "📺",
             "os_type": "any",
-            "windows_path": "scripts/windows/open_youtube.bat",
-            "linux_path": "scripts/linux/open_youtube.sh",
+            "windows_path": "src/scripts/windows/open_youtube.bat",
+            "linux_path": "src/scripts/linux/open_youtube.sh",
             "enabled": true,
             "category": "entretenimiento"
         }

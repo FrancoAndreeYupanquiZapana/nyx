@@ -447,7 +447,19 @@ class VoiceRecognizer:
                     logger.info("🤖 Cargando modelo Faster-Whisper (base)...")
                     
                     # Asegurar que el directorio de descarga existe
-                    download_path = os.path.join(os.getcwd(), "models", "whisper")
+                    import sys
+                    if getattr(sys, 'frozen', False):
+                         # If frozen, look for models in the internal directory or adjacent to exe depending on how we want it.
+                         # But wait, create_vite_app usually implies we want to USE existing models if bundled, or download to a user writable dir.
+                         # For now, let's point to the bundled src/models if available, OR a writable location.
+                         # We placed 'src/models' in 'datas', so it will be at sys._MEIPASS/src/models
+                         base_path = os.path.join(sys._MEIPASS, 'src')
+                    else:
+                        base_path = os.getcwd()
+                        if os.path.basename(base_path) != 'src' and os.path.exists(os.path.join(base_path, 'src')):
+                             base_path = os.path.join(base_path, 'src')
+
+                    download_path = os.path.join(base_path, "models", "whisper")
                     os.makedirs(download_path, exist_ok=True)
                     
                     # Usar 'cpu' por defecto para máxima compatibilidad

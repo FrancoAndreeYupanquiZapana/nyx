@@ -12,8 +12,27 @@ from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QGroupBo
 from typing import Dict, Any, List, Optional
 import json
 import os
+import sys
+from pathlib import Path
 from utils.logger import logger
 
+# Helper to locate assets/config recursively or absolutely
+def get_project_root() -> Path:
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle
+        # In onedir, sys._MEIPASS is the _internal folder
+        return Path(sys._MEIPASS)
+    else:
+        # src/ui/styles.py -> src/ui -> src -> root
+        return Path(__file__).resolve().parent.parent.parent
+
+def get_assets_path() -> Path:
+    root = get_project_root()
+    # In frozen: _internal/src/assets
+    # In dev: root/src/assets
+    return root / "src" / "assets"
+
+ASSETS_ROOT = get_assets_path().as_posix()
 
 class Theme:
     """Base para temas de la aplicación NYX."""
@@ -167,13 +186,13 @@ class Theme:
     
     def _load_custom_fonts(self):
         """Carga fuentes personalizadas desde archivos."""
-        font_dir = os.path.join(os.path.dirname(__file__), 'assets', 'fonts')
+        font_dir = get_assets_path() / 'fonts'
         
-        if os.path.exists(font_dir):
+        if font_dir.exists():
             for font_file in os.listdir(font_dir):
                 if font_file.endswith(('.ttf', '.otf')):
-                    font_path = os.path.join(font_dir, font_file)
-                    font_id = QFontDatabase.addApplicationFont(font_path)
+                    font_path = font_dir / font_file
+                    font_id = QFontDatabase.addApplicationFont(str(font_path))
                     
                     if font_id != -1:
                         font_families = QFontDatabase.applicationFontFamilies(font_id)
@@ -527,7 +546,7 @@ class DarkTheme(Theme):
             'QCheckBox::indicator:checked': f"""
                 background-color: {self.colors['primary']};
                 border: 2px solid {self.colors['primary']};
-                image: url(src/assets/icons/check.svg);
+                image: url({ASSETS_ROOT}/icons/check.svg);
             """,
             
             'QCheckBox::indicator:disabled': f"""
@@ -570,7 +589,7 @@ class DarkTheme(Theme):
             """,
             
             'QComboBox::down-arrow': f"""
-                image: url(src/assets/icons/arrow-down.svg);
+                image: url({ASSETS_ROOT}/icons/arrow-down.svg);
                 width: 16px;
                 height: 16px;
             """,

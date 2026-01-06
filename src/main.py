@@ -139,7 +139,7 @@ class SplashScreen(QSplashScreen):
         painter.setPen(QColor(180, 180, 200))  # Grey-ish
         
         subtitle_rect = QRect(0, 270, pixmap.width(), 30)
-        painter.drawText(subtitle_rect, Qt.AlignmentFlag.AlignCenter, "Control por Gestos y Voz")
+        painter.drawText(subtitle_rect, Qt.AlignmentFlag.AlignCenter, "Control de mouse por Gestos")
         
         # 5. Barra de progreso (fondo)
         bar_width = 400
@@ -481,7 +481,7 @@ class NYXApplication:
         if self.main_window and hasattr(self.main_window, 'log_message'):
             welcome_msg = """
             <h2 style="color: #4fc3f7;">🎮 ¡Bienvenido a NYX!</h2>
-            <p><b>Sistema de Control por Gestos y Voz v1.0.0</b></p>
+            <p><b>Sistema de Control por Gestos v1.0.0</b></p>
             
             <p><b>✅ Sistema inicializado correctamente</b></p>
             <ul>

@@ -3,7 +3,7 @@
   "description": "Perfil Perfil_ejemplo",
   "version": "1.0.0",
   "author": "Usuario",
-  "os_type": "windows",
+  "os_type": "any",
   "gestures": {
     "fist": {
       "action": "mouse",

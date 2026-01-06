@@ -699,6 +699,36 @@ class ProfileManagerWindow(QDialog):
         self.status_bar.setText(f"✅ {len(profiles)} perfiles cargados")
         logger.info(f"📂 Lista de perfiles cargada: {len(profiles)} perfiles")
     
+    def _load_profile_details(self, profile_name: str):
+        """Carga los detalles del perfil en el panel informativo."""
+        try:
+            profile_obj = self.profile_manager.get_profile(profile_name)
+            if not profile_obj:
+                return
+
+            profile_data = profile_obj.to_dict()
+            
+            # Actualizar información del perfil
+            description = profile_data.get('description', 'Sin descripción')
+            author = profile_data.get('author', 'Desconocido')
+            version = profile_data.get('version', '1.0.0')
+            gestures_count = len(profile_data.get('gestures', {}))
+            voice_commands = len(profile_data.get('voice_commands', {}))
+            
+            info_text = f"""
+            <b>{profile_name}</b> (v{version})<br>
+            <i>{description}</i><br><br>
+            <b>Autor:</b> {author}<br>
+            <b>Gestos:</b> {gestures_count}<br>
+            <b>Comandos voz:</b> {voice_commands}<br>
+            <b>Última modificación:</b> {profile_data.get('last_modified', 'Desconocida')}
+            """
+            
+            self.profile_info_label.setText(info_text)
+            
+        except Exception as e:
+            logger.error(f"Error cargando detalles del perfil {profile_name}: {e}")
+    
     def _on_profile_selected(self, current, previous):
         """Manejador cuando se selecciona un perfil en la lista."""
         if not current:
@@ -787,7 +817,7 @@ class ProfileManagerWindow(QDialog):
                 # EMITIR SEÑAL para que MainWindow actualice el selector
                 self.profile_saved.emit(new_name)
                     
-                self.status_bar.showMessage(f"Perfil '{new_name}' creado exitosamente", 3000)
+                self.status_bar.setText(f"✅ Perfil '{new_name}' creado exitosamente")
                 
         except Exception as e:
             logger.error(f"Error creando perfil: {e}")

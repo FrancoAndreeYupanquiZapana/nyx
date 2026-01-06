@@ -344,6 +344,14 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
         # Cooldown y debouncing
         self.gesture_cooldowns = {}  # {gesto_name: last_time}
         self.min_gesture_interval = 0.3  # segundos
+
+        # === Floating Window Control ===
+        self.qm_last_trigger_time = 0      # Timestamp of last successful trigger
+        self.qm_activation_start_time = None # Timestamp when gesture started being held
+        self.qm_activation_delay = 2.0     # Seconds to hold before triggering
+        self.qm_cooldown = 4.0             # Seconds to wait after triggering
+        self.qm_active_gesture = None      # Current gesture being held
+        self.qm_gesture_loss_time = None   # Grace period timer
         
         # Hilos
         self.camera_thread = None
@@ -726,17 +734,67 @@ class GesturePipeline(QObject, GesturePipelineIntegration):
             quick_menu_enabled = getattr(self.profile_runtime, 'quick_menu_enabled', False)
             quick_menu_gesture = getattr(self.profile_runtime, 'quick_menu_gesture', 'both_hands_open')
             
-            logger.debug(f"🔍 Quick Menu check: gesture={gesture_name}, enabled={quick_menu_enabled}, expected={quick_menu_gesture}")
-            
+            # Check if this is the target gesture
             if quick_menu_enabled and gesture_name == quick_menu_gesture:
-                logger.info(f"⚡⚡⚡ QUICK MENU ACTIVADO! Gesto: {gesture_name}")
-                if self.quick_menu_requested:
-                    profile_os = getattr(self.profile_runtime, 'os_type', 'any')
-                    logger.info(f"📡 Emitiendo señal quick_menu_requested con OS: {profile_os}")
-                    self.quick_menu_requested.emit(profile_os)
-                else:
-                    logger.warning("⚠️ quick_menu_requested signal is None!")
+                current_t = time.time()
+                
+                # Clear loss timer if we regained the gesture
+                self.qm_gesture_loss_time = None
+                
+                # Check COOLDOWN first
+                if (current_t - self.qm_last_trigger_time) < self.qm_cooldown:
+                    # Still cooling down
+                    return
+
+                # Check if we are already holding this gesture
+                if self.qm_activation_start_time is None:
+                    # New hold sequence
+                    self.qm_activation_start_time = current_t
+                    self.qm_active_gesture = gesture_name
+                    logger.debug(f"⏳ Quick Menu: Holding gesture... (Need {self.qm_activation_delay}s)")
+                
+                elif self.qm_active_gesture == gesture_name:
+                    # Continuing hold
+                    hold_duration = current_t - self.qm_activation_start_time
+                    if hold_duration >= self.qm_activation_delay:
+                        # SUCCESS! Trigger menu
+                        logger.info(f"⚡⚡⚡ QUICK MENU ACTIVADO! (Held for {hold_duration:.1f}s)")
+                        
+                        if self.quick_menu_requested:
+                            profile_os = getattr(self.profile_runtime, 'os_type', 'any')
+                            logger.info(f"📡 Emitiendo señal quick_menu_requested con OS: {profile_os}")
+                            self.quick_menu_requested.emit(profile_os)
+                            
+                            # Reset and apply cooldown
+                            self.qm_last_trigger_time = current_t
+                            self.qm_activation_start_time = None
+                            self.qm_active_gesture = None
+                        else:
+                            logger.warning("⚠️ quick_menu_requested signal is None!")
+                
+                # If we are holding a DIFFERENT gesture (weird), reset
+                else: 
+                     self.qm_activation_start_time = current_t
+                     self.qm_active_gesture = gesture_name
+                
                 return  # No procesar como acción normal
+            
+            else:
+                # If a different gesture or no gesture, handle grace period
+                if self.qm_activation_start_time is not None:
+                    current_t = time.time()
+                    
+                    if self.qm_gesture_loss_time is None:
+                        # Start grace period
+                        self.qm_gesture_loss_time = current_t
+                        # logger.debug("⚠️ Quick Menu gesture lost, starting grace period...")
+                    
+                    elif (current_t - self.qm_gesture_loss_time) > 0.5: # 0.5s Grace Period
+                        # Grace period expired, RESET
+                        self.qm_activation_start_time = None
+                        self.qm_active_gesture = None
+                        self.qm_gesture_loss_time = None
+                        logger.debug("❌ Quick Menu hold failed (grace period expired)")
         
         # 6. Mapear gesto a acción usando el sistema integrado
         action = self.process_gesture(gesture_data)

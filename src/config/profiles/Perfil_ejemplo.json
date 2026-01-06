@@ -1,9 +1,9 @@
 {
-  "profile_name": "rutly",
-  "description": "Perfil rutly",
+  "profile_name": "Perfil_ejemplo",
+  "description": "Perfil Perfil_ejemplo",
   "version": "1.0.0",
   "author": "Usuario",
-  "os_type": "windows",
+  "os_type": "any",
   "gestures": {
     "fist": {
       "action": "mouse",
@@ -44,11 +44,5 @@
     "voice",
     "keyboard",
     "mouse"
-  ],
-  "quick_menu": {
-    "enabled": true,
-    "gesture": "both_hands_open",
-    "show_categories": true,
-    "favorite_scripts": []
-  }
+  ]
 }
